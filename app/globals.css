@@ -1,0 +1,275 @@
+@import "tailwindcss";
+:root {
+    --background: #070d18;
+    --foreground: #f8fafc;
+    --surface: rgba(15, 23, 42, 0.58);
+    --surface-strong: rgba(15, 23, 42, 0.9);
+    --line: rgba(148, 163, 184, 0.22);
+    --accent: #4f6dff;
+    /* Product theme tokens */
+    --sentra-accent: #3b82f6;
+    --sentra-glow: rgba(59, 130, 246, 0.25);
+    --facenova-accent: #22d3ee;
+    --facenova-glow: rgba(34, 211, 238, 0.2);
+    --hygyr-accent: #818cf8;
+    --hygyr-glow: rgba(129, 140, 248, 0.18);
+    --parking-accent: #38bdf8;
+    --parking-glow: rgba(56, 189, 248, 0.22);
+}
+
+@theme inline {
+    --color-background: var(--background);
+    --color-foreground: var(--foreground);
+    --font-sans: var(--font-manrope);
+}
+
+body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-manrope), system-ui, sans-serif;
+    background-image: radial-gradient(circle at 12% 8%, rgba(59, 130, 246, 0.24), transparent 34%), radial-gradient(circle at 85% 0%, rgba(79, 70, 229, 0.22), transparent 30%), linear-gradient(180deg, #020617 0%, #070d18 45%, #020617 100%);
+}
+
+body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: -1;
+    background-image: linear-gradient(rgba(148, 163, 184, 0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(148, 163, 184, 0.08) 1px, transparent 1px);
+    background-size: 44px 44px;
+    mask-image: radial-gradient(circle at center, black, transparent 82%);
+}
+
+.enterprise-glass {
+    backdrop-filter: blur(14px);
+    background: linear-gradient(180deg, rgba(15, 23, 42, 0.64), rgba(15, 23, 42, 0.5));
+}
+
+.nav-link {
+    position: relative;
+}
+
+.nav-link:hover span,
+.nav-link:focus-visible span {
+    transform: scaleX(1);
+}
+
+.bg-flow {
+    position: absolute;
+    inset: -30%;
+    pointer-events: none;
+    background: radial-gradient(circle at 20% 35%, rgba(59, 130, 246, 0.18), transparent 30%), radial-gradient(circle at 80% 70%, rgba(79, 70, 229, 0.2), transparent 32%);
+    opacity: 0.7;
+    animation: float-shift 10s ease-in-out infinite;
+}
+
+@keyframes float-shift {
+    0% {
+        transform: translate3d(-2%, -1%, 0);
+        opacity: 0.55;
+    }
+    50% {
+        transform: translate3d(2%, 2%, 0);
+        opacity: 0.78;
+    }
+    100% {
+        transform: translate3d(-1%, 3%, 0);
+        opacity: 0.6;
+    }
+}
+
+
+/* ── Sentra: Command Center ── */
+
+@keyframes sentra-pulse {
+    0%,
+    100% {
+        opacity: 0.3;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.8;
+        transform: scale(1.15);
+    }
+}
+
+@keyframes sentra-stream {
+    0% {
+        transform: translateX(-100%);
+        opacity: 0;
+    }
+    20% {
+        opacity: 0.7;
+    }
+    80% {
+        opacity: 0.7;
+    }
+    100% {
+        transform: translateX(400%);
+        opacity: 0;
+    }
+}
+
+@keyframes sentra-grid-pulse {
+    0%,
+    100% {
+        opacity: 0.12;
+    }
+    50% {
+        opacity: 0.28;
+    }
+}
+
+.sentra-node-pulse {
+    animation: sentra-pulse 2.4s ease-in-out infinite;
+}
+
+.sentra-data-stream {
+    animation: sentra-stream 3s linear infinite;
+}
+
+.sentra-grid-bg {
+    background-image: linear-gradient(rgba(59, 130, 246, 0.18) 1px, transparent 1px), linear-gradient(90deg, rgba(59, 130, 246, 0.18) 1px, transparent 1px);
+    background-size: 28px 28px;
+    animation: sentra-grid-pulse 4s ease-in-out infinite;
+}
+
+
+/* ── Facenova: AI Surveillance ── */
+
+@keyframes facenova-scan {
+    0% {
+        transform: translateY(-100%);
+        opacity: 0.2;
+    }
+    50% {
+        opacity: 0.6;
+    }
+    100% {
+        transform: translateY(600%);
+        opacity: 0.1;
+    }
+}
+
+@keyframes facenova-detect {
+    0% {
+        opacity: 0;
+        transform: scale(1.3);
+    }
+    30% {
+        opacity: 0.9;
+        transform: scale(1);
+    }
+    70% {
+        opacity: 0.9;
+        transform: scale(1);
+    }
+    100% {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+}
+
+@keyframes facenova-blink {
+    0%,
+    45%,
+    55%,
+    100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.3;
+    }
+}
+
+.facenova-scanline {
+    animation: facenova-scan 2.8s ease-in-out infinite;
+}
+
+.facenova-detect-box {
+    animation: facenova-detect 3.2s ease-in-out infinite;
+}
+
+.facenova-indicator {
+    animation: facenova-blink 1.6s step-end infinite;
+}
+
+.facenova-grid-bg {
+    background-image: linear-gradient(rgba(34, 211, 238, 0.12) 1px, transparent 1px), linear-gradient(90deg, rgba(34, 211, 238, 0.12) 1px, transparent 1px);
+    background-size: 36px 36px;
+}
+
+
+/* ── HYGYR: Clean Tool ── */
+
+@keyframes hygyr-shimmer {
+    0% {
+        transform: translateX(-100%);
+    }
+    100% {
+        transform: translateX(100%);
+    }
+}
+
+.hygyr-shimmer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(129, 140, 248, 0.08), transparent);
+    animation: hygyr-shimmer 2.5s ease-in-out infinite;
+}
+
+
+/* ── Smart Parking: Navigation ── */
+
+@keyframes parking-pin-drop {
+    0% {
+        transform: translateY(-20px) scale(0.6);
+        opacity: 0;
+    }
+    60% {
+        transform: translateY(2px) scale(1.05);
+        opacity: 1;
+    }
+    100% {
+        transform: translateY(0) scale(1);
+        opacity: 1;
+    }
+}
+
+@keyframes parking-ripple {
+    0% {
+        transform: scale(0.8);
+        opacity: 0.6;
+    }
+    100% {
+        transform: scale(2.5);
+        opacity: 0;
+    }
+}
+
+@keyframes parking-path-draw {
+    to {
+        stroke-dashoffset: 0;
+    }
+}
+
+.parking-pin-animate {
+    animation: parking-pin-drop 0.4s ease-out both;
+}
+
+.parking-ripple {
+    animation: parking-ripple 1.8s ease-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+        scroll-behavior: auto !important;
+    }
+}
