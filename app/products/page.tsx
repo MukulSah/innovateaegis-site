@@ -14,7 +14,7 @@ export default function ProductsPage() {
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-purple-300/60">
             Products
           </p>
-          <h1 className="gradient-text mt-4 max-w-3xl text-4xl font-bold tracking-tight md:text-6xl">
+          <h1 className="gradient-text mt-4 max-w-3xl text-3xl font-bold tracking-tight sm:text-4xl md:text-6xl">
             Product systems designed for control, clarity, and outcomes
           </h1>
           <p className="mt-5 max-w-3xl text-sm leading-7 text-white/60">

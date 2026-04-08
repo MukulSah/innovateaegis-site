@@ -184,15 +184,24 @@ function ParticleField() {
       mouseY = e.clientY;
     };
 
+    const onTouch = (e: TouchEvent) => {
+      if (e.touches.length > 0) {
+        mouseX = e.touches[0].clientX;
+        mouseY = e.touches[0].clientY;
+      }
+    };
+
     init();
     rafId = requestAnimationFrame(draw);
     window.addEventListener("resize", resize, { passive: true });
     window.addEventListener("mousemove", onMove, { passive: true });
+    window.addEventListener("touchmove", onTouch, { passive: true });
 
     return () => {
       cancelAnimationFrame(rafId);
       window.removeEventListener("resize", resize);
       window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("touchmove", onTouch);
     };
   }, []);
 
@@ -318,7 +327,7 @@ export default function Home() {
                 initial={{ opacity: 0, y: 30, filter: "blur(8px)" }}
                 animate={introComplete ? { opacity: 1, y: 0, filter: "blur(0px)" } : {}}
                 transition={{ ...motionTokens.spring.smooth, delay: 0.2 }}
-                className="gradient-text-hero mt-6 max-w-5xl text-5xl font-bold tracking-tight md:text-8xl"
+                className="gradient-text-hero mt-6 max-w-5xl text-4xl font-bold tracking-tight sm:text-5xl md:text-8xl"
               >
                 Innovative Aegis
               </motion.h1>
@@ -336,19 +345,19 @@ export default function Home() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={introComplete ? { opacity: 1, y: 0 } : {}}
                 transition={{ ...motionTokens.spring.smooth, delay: 0.5 }}
-                className="mt-10 flex flex-wrap gap-4"
+                className="mt-10 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:gap-4"
               >
                 <button
                   type="button"
                   onClick={() => scrollToId("products")}
-                  className="glow-btn rounded-full bg-gradient-to-r from-purple-600 to-cyan-500 px-8 py-3.5 text-sm font-semibold text-white shadow-lg shadow-purple-500/25"
+                  className="glow-btn w-full rounded-full bg-gradient-to-r from-purple-600 to-cyan-500 px-8 py-3.5 text-sm font-semibold text-white shadow-lg shadow-purple-500/25 sm:w-auto"
                 >
                   Explore Products
                 </button>
                 <button
                   type="button"
                   onClick={() => scrollToId("build")}
-                  className="magnetic-hover rounded-full border border-white/15 bg-white/5 px-8 py-3.5 text-sm font-semibold text-white/90 backdrop-blur-sm transition-all duration-200 hover:border-purple-400/30 hover:bg-white/10"
+                  className="magnetic-hover w-full rounded-full border border-white/15 bg-white/5 px-8 py-3.5 text-sm font-semibold text-white/90 backdrop-blur-sm transition-all duration-200 hover:border-purple-400/30 hover:bg-white/10 sm:w-auto"
                 >
                   Build With Us
                 </button>
@@ -359,7 +368,7 @@ export default function Home() {
                 initial={{ opacity: 0 }}
                 animate={introComplete ? { opacity: 1 } : {}}
                 transition={{ delay: 1.2 }}
-                className="mt-20 flex flex-col items-center gap-2"
+                className="mt-10 flex flex-col items-center gap-2"
               >
                 <motion.div
                   animate={{ y: [0, 8, 0] }}
@@ -389,7 +398,7 @@ export default function Home() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={getFramerTransition({ spring: true })}
-                className="gradient-text mt-4 max-w-3xl text-3xl font-bold tracking-tight md:text-5xl"
+                className="gradient-text mt-4 max-w-3xl text-2xl font-bold tracking-tight sm:text-3xl md:text-5xl"
               >
                 Enterprise and user products with controlled execution paths
               </motion.h2>
@@ -441,7 +450,7 @@ export default function Home() {
               ].map((line) => (
                 <p
                   key={line}
-                  className="js-build-line mt-5 text-3xl font-bold tracking-tight text-white md:text-6xl"
+                  className="js-build-line mt-5 text-2xl font-bold tracking-tight text-white sm:text-3xl md:text-6xl"
                 >
                   {line}
                 </p>
@@ -455,7 +464,7 @@ export default function Home() {
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-purple-300/60">
                 Connect
               </p>
-              <h2 className="gradient-text mt-4 text-3xl font-bold tracking-tight md:text-5xl">
+              <h2 className="gradient-text mt-4 text-2xl font-bold tracking-tight sm:text-3xl md:text-5xl">
                 Start a focused conversation
               </h2>
 

@@ -4,9 +4,9 @@ export function SiteFooter() {
   return (
     <footer
       id="about"
-      className="mt-24 border-t border-purple-400/10 bg-[#050510]/95 px-6 py-16 md:px-10"
+      className="mt-24 border-t border-purple-400/10 bg-[#050510]/95 px-6 py-12 md:px-10 md:py-16"
     >
-      <div className="mx-auto grid w-full max-w-6xl gap-8 md:grid-cols-[1.2fr_1fr]">
+      <div className="mx-auto grid w-full max-w-6xl gap-10 md:grid-cols-[1.2fr_1fr]">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-purple-300/60">
             About

@@ -125,7 +125,7 @@ function SentraExperience({ product }: ProductDetailProps) {
                 initial="hidden"
                 animate="visible"
                 transition={getFramerTransition({ duration: motionTokens.duration.emphasis, delay: 0.15 })}
-                className="mt-4 text-4xl font-bold tracking-tight text-white md:text-6xl"
+                className="mt-4 text-3xl font-bold tracking-tight text-white sm:text-4xl md:text-6xl"
               >
                 {product.name}
               </motion.h1>
@@ -267,7 +267,7 @@ function SentraExperience({ product }: ProductDetailProps) {
         <section className="sentra-scroll mx-auto mt-16 w-full max-w-6xl">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-200/80">Control surface</p>
           <div className="mt-4 overflow-hidden rounded-2xl border border-blue-300/15 bg-[#050510]/60 p-6">
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               {["Endpoints", "Active", "Alerts", "Policies"].map((label, i) => (
                 <motion.div
                   key={label}
@@ -287,7 +287,7 @@ function SentraExperience({ product }: ProductDetailProps) {
               <span className="text-xs text-blue-300/60 font-mono">LIVE</span>
               <div className="h-px flex-1 bg-gradient-to-r from-transparent via-blue-400/30 to-transparent" />
             </div>
-            <div className="mt-4 grid grid-cols-6 gap-2">
+            <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-6">
               {Array.from({ length: 12 }).map((_, i) => (
                 <div key={i} className="h-8 rounded border border-blue-200/8 bg-[#0a0a20]/40">
                   <motion.div
@@ -405,7 +405,7 @@ function FacenovaExperience({ product }: ProductDetailProps) {
                 initial="hidden"
                 animate="visible"
                 transition={getFramerTransition({ duration: motionTokens.duration.emphasis, delay: 0.15 })}
-                className="mt-4 text-4xl font-bold tracking-tight text-white md:text-6xl"
+                className="mt-4 text-3xl font-bold tracking-tight text-white sm:text-4xl md:text-6xl"
               >
                 {product.name}
               </motion.h1>
@@ -642,7 +642,7 @@ function HygyrExperience({ product }: ProductDetailProps) {
               initial="hidden"
               animate="visible"
               transition={getFramerTransition({ duration: motionTokens.duration.emphasis })}
-              className="text-4xl font-bold tracking-tight text-white md:text-6xl"
+              className="text-3xl font-bold tracking-tight text-white sm:text-4xl md:text-6xl"
             >
               {product.name}
             </motion.h1>
@@ -878,7 +878,7 @@ function SmartParkingExperience({ product }: ProductDetailProps) {
                 initial="hidden"
                 animate="visible"
                 transition={getFramerTransition({ duration: motionTokens.duration.emphasis, delay: 0.1 })}
-                className="text-4xl font-bold tracking-tight text-white md:text-6xl"
+                className="text-3xl font-bold tracking-tight text-white sm:text-4xl md:text-6xl"
               >
                 {product.name}
               </motion.h1>

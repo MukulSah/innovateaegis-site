@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Manrope } from "next/font/google";
 import { Navbar } from "@/components/navbar";
 import { CursorGlow } from "@/components/cursor-effects";
@@ -11,8 +11,46 @@ const manrope = Manrope({
 });
 
 export const metadata: Metadata = {
-  title: "Innovative Aegis",
-  description: "Silent systems. Relentless intelligence.",
+  title: {
+    default: "Innovative Aegis",
+    template: "%s | Innovative Aegis",
+  },
+  description:
+    "Innovative Aegis builds silent, intelligent systems — from AI-powered security to smart infrastructure solutions.",
+  metadataBase: new URL("https://innovativeaegis.com"),
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    type: "website",
+    siteName: "Innovative Aegis",
+    title: "Innovative Aegis — Silent systems. Relentless intelligence.",
+    description:
+      "Innovative Aegis builds silent, intelligent systems — from AI-powered security to smart infrastructure solutions.",
+    url: "https://innovativeaegis.com",
+    locale: "en_US",
+  },
+  twitter: {
+    card: "summary",
+    title: "Innovative Aegis — Silent systems. Relentless intelligence.",
+    description:
+      "Innovative Aegis builds silent, intelligent systems — from AI-powered security to smart infrastructure solutions.",
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+    },
+  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  userScalable: true,
 };
 
 export default function RootLayout({
