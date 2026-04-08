@@ -101,7 +101,7 @@ function SentraExperience({ product }: ProductDetailProps) {
       <main className="relative overflow-hidden px-6 pb-16 pt-32 md:px-10 md:pt-40">
         {/* Hero — System Boot */}
         <section className="mx-auto w-full max-w-6xl">
-          <div className="enterprise-glass relative overflow-hidden rounded-3xl border border-blue-400/20 p-8 md:p-12">
+          <div className="enterprise-glass relative overflow-hidden rounded-3xl border border-blue-400/15 p-8 md:p-12">
             {/* Grid overlay */}
             <div className="sentra-grid-bg pointer-events-none absolute inset-0" />
 
@@ -125,7 +125,7 @@ function SentraExperience({ product }: ProductDetailProps) {
                 initial="hidden"
                 animate="visible"
                 transition={getFramerTransition({ duration: motionTokens.duration.emphasis, delay: 0.15 })}
-                className="mt-4 text-4xl font-semibold tracking-tight text-slate-50 md:text-6xl"
+                className="mt-4 text-4xl font-bold tracking-tight text-white md:text-6xl"
               >
                 {product.name}
               </motion.h1>
@@ -140,7 +140,7 @@ function SentraExperience({ product }: ProductDetailProps) {
               </motion.p>
 
               {/* Boot sequence terminal */}
-              <div className="mt-8 overflow-hidden rounded-xl border border-blue-300/15 bg-slate-950/80 p-5 font-mono text-sm">
+              <div className="mt-8 overflow-hidden rounded-xl border border-blue-300/15 bg-[#050510]/80 p-5 font-mono text-sm">
                 <div className="mb-3 flex items-center gap-2">
                   <span className="h-2.5 w-2.5 rounded-full bg-blue-400/70" />
                   <span className="h-2.5 w-2.5 rounded-full bg-blue-300/40" />
@@ -157,7 +157,7 @@ function SentraExperience({ product }: ProductDetailProps) {
                     className="flex items-center gap-2 py-1"
                   >
                     <span className="text-blue-400/60">▸</span>
-                    <span className={i === bootSequence.length - 1 ? "text-blue-200 font-semibold" : "text-slate-400"}>
+                    <span className={i === bootSequence.length - 1 ? "text-blue-200 font-semibold" : "text-white/40"}>
                       {line.text}
                     </span>
                     {i < bootSequence.length - 1 && (
@@ -187,9 +187,9 @@ function SentraExperience({ product }: ProductDetailProps) {
 
         {/* Network Topology Visualization */}
         <section className="sentra-scroll mx-auto mt-16 w-full max-w-6xl">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-200/80">System topology</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-200/80">System topology</p>
           <div className="mt-4 grid gap-6 md:grid-cols-[1.2fr_1fr]">
-            <div className="relative overflow-hidden rounded-2xl border border-blue-300/15 bg-slate-950/70 p-6">
+            <div className="relative overflow-hidden rounded-2xl border border-blue-300/15 bg-[#050510]/70 p-6">
               <svg viewBox="0 0 100 110" className="h-full w-full" style={{ minHeight: 280 }}>
                 {/* Connection lines */}
                 {SENTRA_CONNECTIONS.map(([from, to], i) => (
@@ -239,12 +239,12 @@ function SentraExperience({ product }: ProductDetailProps) {
                   </g>
                 ))}
               </svg>
-              <p className="mt-3 text-xs text-slate-500">Hover nodes to simulate activation and control focus.</p>
+              <p className="mt-3 text-xs text-white/30">Hover nodes to simulate activation and control focus.</p>
             </div>
 
             <div>
-              <p className="text-sm leading-7 text-slate-300">{product.description}</p>
-              <ul className="mt-5 space-y-3 text-sm text-slate-200">
+              <p className="text-sm leading-7 text-white/60">{product.description}</p>
+              <ul className="mt-5 space-y-3 text-sm text-white/80">
                 {product.whatItDoes.map((point, i) => (
                   <motion.li
                     key={i}
@@ -265,8 +265,8 @@ function SentraExperience({ product }: ProductDetailProps) {
 
         {/* Visual — Dashboard Mock */}
         <section className="sentra-scroll mx-auto mt-16 w-full max-w-6xl">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-200/80">Control surface</p>
-          <div className="mt-4 overflow-hidden rounded-2xl border border-blue-300/15 bg-slate-950/60 p-6">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-200/80">Control surface</p>
+          <div className="mt-4 overflow-hidden rounded-2xl border border-blue-300/15 bg-[#050510]/60 p-6">
             <div className="grid grid-cols-4 gap-3">
               {["Endpoints", "Active", "Alerts", "Policies"].map((label, i) => (
                 <motion.div
@@ -275,10 +275,10 @@ function SentraExperience({ product }: ProductDetailProps) {
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true }}
                   transition={getFramerTransition({ delay: i * motionTokens.stagger.standard })}
-                  className="rounded-lg border border-blue-200/12 bg-slate-900/50 p-4 text-center"
+                  className="rounded-lg border border-blue-200/12 bg-[#0a0a20]/50 p-4 text-center"
                 >
                   <p className="text-2xl font-semibold text-blue-100">{[248, 192, 3, 12][i]}</p>
-                  <p className="mt-1 text-xs text-slate-400">{label}</p>
+                  <p className="mt-1 text-xs text-white/40">{label}</p>
                 </motion.div>
               ))}
             </div>
@@ -289,7 +289,7 @@ function SentraExperience({ product }: ProductDetailProps) {
             </div>
             <div className="mt-4 grid grid-cols-6 gap-2">
               {Array.from({ length: 12 }).map((_, i) => (
-                <div key={i} className="h-8 rounded border border-blue-200/8 bg-slate-900/40">
+                <div key={i} className="h-8 rounded border border-blue-200/8 bg-[#0a0a20]/40">
                   <motion.div
                     className="h-full rounded bg-blue-500/20"
                     initial={{ scaleX: 0 }}
@@ -306,7 +306,7 @@ function SentraExperience({ product }: ProductDetailProps) {
 
         {/* Features */}
         <section className="sentra-scroll mx-auto mt-16 w-full max-w-6xl">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Key features</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/40">Key features</p>
           <div className="mt-5 grid gap-4 md:grid-cols-2">
             {product.features.map((feature, i) => (
               <motion.article
@@ -321,8 +321,8 @@ function SentraExperience({ product }: ProductDetailProps) {
                 <div className="mb-4 flex h-9 w-9 items-center justify-center rounded-lg bg-blue-500/20 transition-colors group-hover:bg-blue-500/35">
                   <div className="sentra-indicator h-2.5 w-2.5 rounded-full bg-blue-400" />
                 </div>
-                <h3 className="text-lg font-semibold text-slate-100">{feature.title}</h3>
-                <p className="mt-2 text-sm leading-7 text-slate-300">{feature.text}</p>
+                <h3 className="text-lg font-semibold text-white">{feature.title}</h3>
+                <p className="mt-2 text-sm leading-7 text-white/60">{feature.text}</p>
               </motion.article>
             ))}
           </div>
@@ -331,10 +331,10 @@ function SentraExperience({ product }: ProductDetailProps) {
         {/* CTA */}
         <section className="mx-auto mt-16 w-full max-w-6xl">
           <div className="enterprise-glass rounded-2xl border border-blue-300/15 p-8 text-center">
-            <p className="text-sm text-slate-300">Command systems with confidence and operational discipline.</p>
+            <p className="text-sm text-white/60">Command systems with confidence and operational discipline.</p>
             <button
               type="button"
-              className="mt-5 rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 px-7 py-3 text-sm font-semibold text-white transition-transform duration-300 hover:-translate-y-0.5"
+              className="glow-btn mt-5 rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 px-7 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-500/20"
             >
               {product.ctaLabel}
             </button>
@@ -405,7 +405,7 @@ function FacenovaExperience({ product }: ProductDetailProps) {
                 initial="hidden"
                 animate="visible"
                 transition={getFramerTransition({ duration: motionTokens.duration.emphasis, delay: 0.15 })}
-                className="mt-4 text-4xl font-semibold tracking-tight text-slate-50 md:text-6xl"
+                className="mt-4 text-4xl font-bold tracking-tight text-white md:text-6xl"
               >
                 {product.name}
               </motion.h1>
@@ -420,7 +420,7 @@ function FacenovaExperience({ product }: ProductDetailProps) {
             </div>
 
             {/* Detection viewport */}
-            <div className="relative mt-8 min-h-72 overflow-hidden rounded-2xl border border-cyan-200/15 bg-slate-950/80">
+            <div className="relative mt-8 min-h-72 overflow-hidden rounded-2xl border border-cyan-200/15 bg-[#050510]/80">
               {/* Camera corner overlays */}
               <div className="pointer-events-none absolute inset-3 z-30">
                 <div className="absolute left-0 top-0 h-6 w-6 border-l-2 border-t-2 border-cyan-300/60" />
@@ -495,16 +495,16 @@ function FacenovaExperience({ product }: ProductDetailProps) {
                 whileInView="visible"
                 viewport={{ once: true, amount: 0.3 }}
                 transition={getFramerTransition({ duration: motionTokens.duration.emphasis, delay: i * 0.12 })}
-                className="group relative overflow-hidden rounded-2xl border border-cyan-200/15 bg-slate-950/65 p-6"
+                className="group relative overflow-hidden rounded-2xl border border-cyan-200/15 bg-[#050510]/65 p-6"
               >
                 <div className="flex items-center gap-3">
                   <span className="text-2xl text-cyan-400/80">{step.icon}</span>
                   <div>
                     <p className="font-mono text-xs uppercase tracking-[0.16em] text-cyan-300/70">Stage 0{i + 1}</p>
-                    <h3 className="text-2xl font-semibold text-slate-100">{step.stage}</h3>
+                    <h3 className="text-2xl font-semibold text-white">{step.stage}</h3>
                   </div>
                 </div>
-                <p className="mt-4 text-sm leading-7 text-slate-300">{step.desc}</p>
+                <p className="mt-4 text-sm leading-7 text-white/60">{step.desc}</p>
                 {i < 2 && (
                   <div className="absolute -right-3 top-1/2 hidden text-cyan-400/40 md:block">→</div>
                 )}
@@ -512,7 +512,7 @@ function FacenovaExperience({ product }: ProductDetailProps) {
             ))}
           </div>
           {product.whatItDoes[3] && (
-            <p className="mt-4 text-sm text-slate-400">• {product.whatItDoes[3]}</p>
+            <p className="mt-4 text-sm text-white/40">• {product.whatItDoes[3]}</p>
           )}
         </section>
 
@@ -531,11 +531,11 @@ function FacenovaExperience({ product }: ProductDetailProps) {
                 whileInView={{ opacity: 1, scale: 1 }}
                 viewport={{ once: true }}
                 transition={getFramerTransition({ delay: i * motionTokens.stagger.relaxed })}
-                className="rounded-xl border border-cyan-200/12 bg-slate-950/60 p-5"
+                className="rounded-xl border border-cyan-200/12 bg-[#050510]/60 p-5"
               >
                 <p className="text-3xl font-semibold text-cyan-100">{stat.value}</p>
-                <p className="mt-1 text-sm text-slate-300">{stat.label}</p>
-                <p className="mt-1 text-xs text-slate-500">{stat.sub}</p>
+                <p className="mt-1 text-sm text-white/60">{stat.label}</p>
+                <p className="mt-1 text-xs text-white/30">{stat.sub}</p>
               </motion.div>
             ))}
           </div>
@@ -543,7 +543,7 @@ function FacenovaExperience({ product }: ProductDetailProps) {
 
         {/* Features */}
         <section className="facenova-scroll mx-auto mt-16 w-full max-w-6xl">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Key features</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/40">Key features</p>
           <div className="mt-5 grid gap-4 md:grid-cols-2">
             {product.features.map((feature, i) => (
               <motion.article
@@ -557,8 +557,8 @@ function FacenovaExperience({ product }: ProductDetailProps) {
                 <div className="mb-4 flex h-9 w-9 items-center justify-center rounded-lg bg-cyan-500/15 transition-colors group-hover:bg-cyan-500/30">
                   <span className="facenova-indicator h-2.5 w-2.5 rounded-full bg-cyan-400" />
                 </div>
-                <h3 className="text-lg font-semibold text-slate-100">{feature.title}</h3>
-                <p className="mt-2 text-sm leading-7 text-slate-300">{feature.text}</p>
+                <h3 className="text-lg font-semibold text-white">{feature.title}</h3>
+                <p className="mt-2 text-sm leading-7 text-white/60">{feature.text}</p>
               </motion.article>
             ))}
           </div>
@@ -567,10 +567,10 @@ function FacenovaExperience({ product }: ProductDetailProps) {
         {/* CTA */}
         <section className="mx-auto mt-16 w-full max-w-6xl">
           <div className="enterprise-glass rounded-2xl border border-cyan-300/12 p-8 text-center">
-            <p className="text-sm text-slate-300">Build monitoring systems that are precise, aware, and audit ready.</p>
+            <p className="text-sm text-white/60">Build monitoring systems that are precise, aware, and audit ready.</p>
             <button
               type="button"
-              className="mt-5 rounded-full bg-gradient-to-r from-blue-500 to-cyan-500 px-7 py-3 text-sm font-semibold text-white transition-transform duration-300 hover:-translate-y-0.5"
+              className="glow-btn mt-5 rounded-full bg-gradient-to-r from-blue-500 to-cyan-500 px-7 py-3 text-sm font-semibold text-white shadow-lg shadow-cyan-500/20"
             >
               {product.ctaLabel}
             </button>
@@ -642,7 +642,7 @@ function HygyrExperience({ product }: ProductDetailProps) {
               initial="hidden"
               animate="visible"
               transition={getFramerTransition({ duration: motionTokens.duration.emphasis })}
-              className="text-4xl font-semibold tracking-tight text-slate-50 md:text-6xl"
+              className="text-4xl font-bold tracking-tight text-white md:text-6xl"
             >
               {product.name}
             </motion.h1>
@@ -667,7 +667,7 @@ function HygyrExperience({ product }: ProductDetailProps) {
             {/* Builder + Preview side by side */}
             <div className="mt-8 grid gap-5 md:grid-cols-2">
               {/* Builder panel */}
-              <div className="rounded-2xl border border-indigo-200/15 bg-slate-950/60 p-5">
+              <div className="rounded-2xl border border-indigo-200/15 bg-[#050510]/60 p-5">
                 <p className="text-xs uppercase tracking-[0.16em] text-indigo-200/70">Resume builder</p>
                 <div className="mt-4 space-y-3">
                   {resumeSections.map((section, i) => (
@@ -679,8 +679,8 @@ function HygyrExperience({ product }: ProductDetailProps) {
                       transition={getFramerTransition({ duration: motionTokens.duration.standard, delay: i * 0.05 })}
                       className={`flex items-center gap-3 rounded-lg px-4 py-3 text-sm transition-colors duration-300 ${
                         buildStep >= i
-                          ? "border border-indigo-300/20 bg-slate-900/70 text-slate-100"
-                          : "border border-transparent bg-slate-900/30 text-slate-500"
+                          ? "border border-indigo-300/20 bg-[#0a0a20]/70 text-white"
+                          : "border border-transparent bg-[#0a0a20]/30 text-white/30"
                       }`}
                     >
                       <span className="text-indigo-400/70">{section.icon}</span>
@@ -708,7 +708,7 @@ function HygyrExperience({ product }: ProductDetailProps) {
 
               {/* Preview panel */}
               <div className="relative overflow-hidden rounded-2xl border border-indigo-200/15 bg-white/95 p-6 text-slate-900">
-                <p className="text-xs uppercase tracking-[0.16em] text-slate-400">Live preview</p>
+                <p className="text-xs uppercase tracking-[0.16em] text-white/40">Live preview</p>
                 <div className="mt-4 space-y-2.5">
                   {previewLines.map((line, i) => (
                     <motion.div
@@ -724,7 +724,7 @@ function HygyrExperience({ product }: ProductDetailProps) {
                 </div>
                 {buildStep < maxSteps && (
                   <div className="absolute inset-0 flex items-center justify-center bg-white/50">
-                    <p className="text-xs text-slate-400">Building...</p>
+                    <p className="text-xs text-white/40">Building...</p>
                   </div>
                 )}
               </div>
@@ -734,13 +734,13 @@ function HygyrExperience({ product }: ProductDetailProps) {
 
         {/* What It Does */}
         <section className="hygyr-scroll mx-auto mt-16 grid w-full max-w-6xl gap-6 md:grid-cols-2">
-          <div className="rounded-2xl border border-indigo-200/12 bg-slate-900/50 p-6">
+          <div className="rounded-2xl border border-indigo-200/12 bg-[#0a0a20]/50 p-6">
             <p className="text-xs uppercase tracking-[0.16em] text-indigo-200/80">What it does</p>
-            <p className="mt-4 text-sm leading-7 text-slate-300">{product.description}</p>
+            <p className="mt-4 text-sm leading-7 text-white/60">{product.description}</p>
           </div>
-          <div className="rounded-2xl border border-indigo-200/12 bg-slate-900/50 p-6">
+          <div className="rounded-2xl border border-indigo-200/12 bg-[#0a0a20]/50 p-6">
             <p className="text-xs uppercase tracking-[0.16em] text-indigo-200/80">Progressive guidance</p>
-            <ul className="mt-4 space-y-3 text-sm text-slate-300">
+            <ul className="mt-4 space-y-3 text-sm text-white/60">
               {product.whatItDoes.map((point, i) => (
                 <motion.li
                   key={i}
@@ -761,7 +761,7 @@ function HygyrExperience({ product }: ProductDetailProps) {
         {/* Visual — Form Building Experience */}
         <section className="hygyr-scroll mx-auto mt-16 w-full max-w-6xl">
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-indigo-200/80">Editor experience</p>
-          <div className="mt-4 overflow-hidden rounded-2xl border border-indigo-200/12 bg-slate-950/50 p-6">
+          <div className="mt-4 overflow-hidden rounded-2xl border border-indigo-200/12 bg-[#050510]/50 p-6">
             <div className="grid gap-4 md:grid-cols-3">
               {["Write", "Format", "Export"].map((step, i) => (
                 <motion.div
@@ -770,10 +770,10 @@ function HygyrExperience({ product }: ProductDetailProps) {
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true }}
                   transition={getFramerTransition({ delay: i * 0.1 })}
-                  className="rounded-xl border border-indigo-200/10 bg-slate-900/40 p-4 text-center"
+                  className="rounded-xl border border-indigo-200/10 bg-[#0a0a20]/40 p-4 text-center"
                 >
                   <p className="text-xs text-indigo-300/60 uppercase tracking-wider">Step {i + 1}</p>
-                  <p className="mt-2 text-lg font-semibold text-slate-100">{step}</p>
+                  <p className="mt-2 text-lg font-semibold text-white">{step}</p>
                 </motion.div>
               ))}
             </div>
@@ -782,7 +782,7 @@ function HygyrExperience({ product }: ProductDetailProps) {
 
         {/* Features */}
         <section className="hygyr-scroll mx-auto mt-16 w-full max-w-6xl">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Key features</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/40">Key features</p>
           <div className="mt-5 grid gap-4 md:grid-cols-2">
             {product.features.map((feature, i) => (
               <motion.article
@@ -794,8 +794,8 @@ function HygyrExperience({ product }: ProductDetailProps) {
                 className="enterprise-glass rounded-2xl border border-indigo-200/10 p-5 transition-colors hover:border-indigo-300/18"
               >
                 <div className="mb-4 h-9 w-9 rounded-lg bg-indigo-500/15" />
-                <h3 className="text-lg font-semibold text-slate-100">{feature.title}</h3>
-                <p className="mt-2 text-sm leading-7 text-slate-300">{feature.text}</p>
+                <h3 className="text-lg font-semibold text-white">{feature.title}</h3>
+                <p className="mt-2 text-sm leading-7 text-white/60">{feature.text}</p>
               </motion.article>
             ))}
           </div>
@@ -804,10 +804,10 @@ function HygyrExperience({ product }: ProductDetailProps) {
         {/* CTA */}
         <section className="mx-auto mt-16 w-full max-w-6xl">
           <div className="enterprise-glass rounded-2xl border border-indigo-200/12 p-8 text-center">
-            <p className="text-sm text-slate-300">Create better resumes with less friction and full transparency.</p>
+            <p className="text-sm text-white/60">Create better resumes with less friction and full transparency.</p>
             <button
               type="button"
-              className="mt-5 rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 px-7 py-3 text-sm font-semibold text-white transition-transform duration-300 hover:-translate-y-0.5"
+              className="glow-btn mt-5 rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 px-7 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-500/20"
             >
               {product.ctaLabel}
             </button>
@@ -878,7 +878,7 @@ function SmartParkingExperience({ product }: ProductDetailProps) {
                 initial="hidden"
                 animate="visible"
                 transition={getFramerTransition({ duration: motionTokens.duration.emphasis, delay: 0.1 })}
-                className="text-4xl font-semibold tracking-tight text-slate-50 md:text-6xl"
+                className="text-4xl font-bold tracking-tight text-white md:text-6xl"
               >
                 {product.name}
               </motion.h1>
@@ -897,7 +897,7 @@ function SmartParkingExperience({ product }: ProductDetailProps) {
               initial={{ opacity: 0.4, scale: 1.1 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: motionTokens.duration.max, ease: "easeOut" }}
-              className="relative mt-8 h-72 overflow-hidden rounded-2xl border border-sky-200/15 bg-slate-950/70"
+              className="relative mt-8 h-72 overflow-hidden rounded-2xl border border-sky-200/15 bg-[#050510]/70"
             >
               {/* Street grid */}
               <div className="absolute inset-0 [background-image:linear-gradient(rgba(56,189,248,0.1)_1px,transparent_1px),linear-gradient(90deg,rgba(56,189,248,0.1)_1px,transparent_1px)] [background-size:28px_28px]" />
@@ -950,7 +950,7 @@ function SmartParkingExperience({ product }: ProductDetailProps) {
               ))}
 
               {/* Map legend */}
-              <div className="absolute bottom-3 right-3 flex items-center gap-3 rounded-lg bg-slate-950/80 px-3 py-1.5 text-[10px]">
+              <div className="absolute bottom-3 right-3 flex items-center gap-3 rounded-lg bg-[#050510]/80 px-3 py-1.5 text-[10px]">
                 <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-sky-500" /> Available</span>
                 <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber-500" /> Limited</span>
               </div>
@@ -970,17 +970,17 @@ function SmartParkingExperience({ product }: ProductDetailProps) {
                 whileInView="visible"
                 viewport={{ once: true, amount: 0.3 }}
                 transition={getFramerTransition({ delay: i * 0.08 })}
-                className="overflow-hidden rounded-2xl border border-sky-200/12 bg-slate-950/60"
+                className="overflow-hidden rounded-2xl border border-sky-200/12 bg-[#050510]/60"
               >
                 <div className={`h-1.5 w-full ${spot.status === "available" ? "bg-sky-500/40" : "bg-amber-500/40"}`} />
                 <div className="p-5">
                   <p className="text-xs uppercase tracking-[0.14em] text-sky-200/70">Live location</p>
-                  <h3 className="mt-2 text-lg font-semibold text-slate-100">{spot.name}</h3>
+                  <h3 className="mt-2 text-lg font-semibold text-white">{spot.name}</h3>
                   <div className="mt-2 flex items-center gap-2">
                     <span className={`text-2xl font-bold ${spot.status === "available" ? "text-sky-300" : "text-amber-300"}`}>
                       {spot.spots}
                     </span>
-                    <span className="text-sm text-slate-400">spots open</span>
+                    <span className="text-sm text-white/40">spots open</span>
                   </div>
                 </div>
               </motion.article>
@@ -992,8 +992,8 @@ function SmartParkingExperience({ product }: ProductDetailProps) {
         <section className="parking-scroll mx-auto mt-16 grid w-full max-w-6xl gap-6 md:grid-cols-[1fr_1fr]">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-200/80">How it works</p>
-            <p className="mt-4 text-sm leading-7 text-slate-300">{product.description}</p>
-            <ul className="mt-5 space-y-3 text-sm text-slate-200">
+            <p className="mt-4 text-sm leading-7 text-white/60">{product.description}</p>
+            <ul className="mt-5 space-y-3 text-sm text-white/80">
               {product.whatItDoes.map((point, i) => (
                 <motion.li
                   key={i}
@@ -1011,7 +1011,7 @@ function SmartParkingExperience({ product }: ProductDetailProps) {
           </div>
 
           {/* Route visualization */}
-          <div className="rounded-2xl border border-sky-200/12 bg-slate-950/60 p-5">
+          <div className="rounded-2xl border border-sky-200/12 bg-[#050510]/60 p-5">
             <p className="text-xs uppercase tracking-[0.16em] text-sky-200/70">Route optimization</p>
             <div className="mt-4 space-y-3">
               {["Search initiated", "3 locations found", "Route calculated", "Navigating..."].map((step, i) => (
@@ -1021,7 +1021,7 @@ function SmartParkingExperience({ product }: ProductDetailProps) {
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true }}
                   transition={getFramerTransition({ delay: i * 0.1 })}
-                  className="flex items-center gap-3 rounded-lg border border-sky-200/10 bg-slate-900/50 px-4 py-3 text-sm text-slate-200"
+                  className="flex items-center gap-3 rounded-lg border border-sky-200/10 bg-[#0a0a20]/50 px-4 py-3 text-sm text-white/80"
                 >
                   <span className={`h-2 w-2 rounded-full ${i === 3 ? "bg-sky-400 parking-ripple" : "bg-sky-400/50"}`} />
                   {step}
@@ -1034,7 +1034,7 @@ function SmartParkingExperience({ product }: ProductDetailProps) {
 
         {/* Features */}
         <section className="parking-scroll mx-auto mt-16 w-full max-w-6xl">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Key features</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/40">Key features</p>
           <div className="mt-5 grid gap-4 md:grid-cols-2">
             {product.features.map((feature, i) => (
               <motion.article
@@ -1046,8 +1046,8 @@ function SmartParkingExperience({ product }: ProductDetailProps) {
                 className="enterprise-glass rounded-2xl border border-sky-200/10 p-5 transition-colors hover:border-sky-300/18"
               >
                 <div className="mb-4 h-9 w-9 rounded-lg bg-sky-500/15" />
-                <h3 className="text-lg font-semibold text-slate-100">{feature.title}</h3>
-                <p className="mt-2 text-sm leading-7 text-slate-300">{feature.text}</p>
+                <h3 className="text-lg font-semibold text-white">{feature.title}</h3>
+                <p className="mt-2 text-sm leading-7 text-white/60">{feature.text}</p>
               </motion.article>
             ))}
           </div>
@@ -1056,10 +1056,10 @@ function SmartParkingExperience({ product }: ProductDetailProps) {
         {/* CTA */}
         <section className="mx-auto mt-16 w-full max-w-6xl">
           <div className="enterprise-glass rounded-2xl border border-sky-200/12 p-8 text-center">
-            <p className="text-sm text-slate-300">Navigate faster with live availability and route-aware decisions.</p>
+            <p className="text-sm text-white/60">Navigate faster with live availability and route-aware decisions.</p>
             <button
               type="button"
-              className="mt-5 rounded-full bg-gradient-to-r from-sky-500 to-blue-500 px-7 py-3 text-sm font-semibold text-white transition-transform duration-300 hover:-translate-y-0.5"
+              className="glow-btn mt-5 rounded-full bg-gradient-to-r from-sky-500 to-blue-500 px-7 py-3 text-sm font-semibold text-white shadow-lg shadow-sky-500/20"
             >
               {product.ctaLabel}
             </button>

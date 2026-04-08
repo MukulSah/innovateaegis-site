@@ -2,35 +2,47 @@ import type { Transition } from "framer-motion";
 
 export const motionTokens = {
   duration: {
-    quick: 0.2,
-    standard: 0.28,
-    emphasis: 0.34,
-    max: 0.4,
+    quick: 0.12,
+    standard: 0.18,
+    emphasis: 0.24,
+    max: 0.3,
   },
   ease: {
-    standard: "easeInOut" as const,
-    gsapStandard: "power2.inOut",
-    gsapSnap: "power3.out",
-    gsapSmooth: "power1.inOut",
+    standard: [0.22, 1, 0.36, 1] as [number, number, number, number],
+    gsapStandard: "power3.out",
+    gsapSnap: "back.out(1.4)",
+    gsapSmooth: "power2.out",
+  },
+  spring: {
+    snappy: { type: "spring" as const, stiffness: 400, damping: 30 },
+    bouncy: { type: "spring" as const, stiffness: 300, damping: 20, mass: 0.8 },
+    smooth: { type: "spring" as const, stiffness: 200, damping: 25 },
   },
   stagger: {
-    tight: 0.04,
-    standard: 0.05,
-    relaxed: 0.08,
+    tight: 0.03,
+    standard: 0.04,
+    relaxed: 0.06,
   },
   scroll: {
-    revealStart: "top 85%",
+    revealStart: "top 88%",
   },
 } as const;
 
 type TransitionOptions = {
   delay?: number;
   duration?: number;
+  spring?: boolean;
 };
 
 export function getFramerTransition(
   options: TransitionOptions = {},
 ): Transition {
+  if (options.spring) {
+    return {
+      ...motionTokens.spring.snappy,
+      delay: options.delay,
+    };
+  }
   return {
     duration: options.duration ?? motionTokens.duration.standard,
     delay: options.delay,

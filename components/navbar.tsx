@@ -32,24 +32,22 @@ export function Navbar() {
     [pathname],
   );
 
-  const navTransition = getFramerTransition({
-    duration: motionTokens.duration.standard,
-  });
-
   return (
     <motion.header
       animate={{
         top: isScrolled ? 10 : 18,
         scale: isScrolled ? 0.98 : 1,
       }}
-      transition={navTransition}
+      transition={{ ...motionTokens.spring.snappy }}
       className="fixed inset-x-0 z-50 mx-auto w-[min(1100px,calc(100%-1.5rem))]"
     >
-      <div className="enterprise-glass rounded-2xl border border-white/20 px-4 py-3 shadow-[0_14px_44px_rgba(2,6,23,0.34)] md:px-6">
+      <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 shadow-[0_14px_44px_rgba(0,0,0,0.4)] backdrop-blur-xl md:px-6"
+        style={{ background: "linear-gradient(135deg, rgba(15, 15, 40, 0.8), rgba(15, 15, 40, 0.6))" }}
+      >
         <div className="flex items-center justify-between gap-3">
           <Link
             href="/"
-            className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-100"
+            className="gradient-text text-sm font-bold uppercase tracking-[0.18em]"
           >
             Innovative Aegis
           </Link>
@@ -74,10 +72,10 @@ export function Navbar() {
                 type="button"
                 onFocus={() => setProductsOpen(true)}
                 onClick={() => setProductsOpen((prev) => !prev)}
-                className="nav-link flex items-center gap-2 text-sm font-medium text-slate-200"
+                className="nav-link flex items-center gap-2 text-sm font-medium text-white/60 transition-colors duration-200 hover:text-white"
               >
                 Product
-                <span className="text-xs text-slate-400">▼</span>
+                <span className="text-xs text-purple-400/60">▼</span>
               </button>
 
               <AnimatePresence>
@@ -89,7 +87,7 @@ export function Navbar() {
                     transition={getFramerTransition({
                       duration: motionTokens.duration.quick,
                     })}
-                    className="enterprise-glass absolute right-0 top-10 w-[340px] rounded-xl border border-white/16 p-4"
+                    className="enterprise-glass absolute right-0 top-10 w-[340px] rounded-xl border border-purple-400/15 p-4"
                   >
                     <DropdownGroup title="Business">
                       {productGroups.business.map((product) => (
@@ -119,7 +117,7 @@ export function Navbar() {
                       <Link
                         href="/products"
                         onClick={() => setProductsOpen(false)}
-                        className="text-xs font-medium uppercase tracking-[0.14em] text-indigo-200 transition-colors duration-300 hover:text-indigo-100"
+                        className="text-xs font-medium uppercase tracking-[0.14em] text-purple-200 transition-colors duration-200 hover:text-purple-100"
                       >
                         View all products
                       </Link>
@@ -132,7 +130,7 @@ export function Navbar() {
 
           <Link
             href={isProductsActive ? "/#connect" : "#connect"}
-            className="hidden rounded-full border border-indigo-300/30 bg-indigo-500/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-indigo-100 transition-all duration-300 hover:-translate-y-0.5 hover:border-indigo-200/50 hover:bg-indigo-500/20 md:inline-flex"
+            className="hidden rounded-full border border-purple-400/25 bg-purple-500/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-purple-100 transition-all duration-200 hover:-translate-y-0.5 hover:border-purple-300/40 hover:bg-purple-500/20 hover:shadow-[0_0_16px_rgba(124,58,237,0.2)] md:inline-flex"
           >
             Connect
           </Link>
@@ -140,7 +138,7 @@ export function Navbar() {
           <button
             type="button"
             onClick={() => setMobileOpen((prev) => !prev)}
-            className="md:hidden rounded-lg border border-white/20 px-3 py-2 text-xs font-semibold uppercase tracking-[0.1em] text-slate-200"
+            className="md:hidden rounded-lg border border-purple-400/20 bg-purple-500/10 px-3 py-2 text-xs font-semibold uppercase tracking-[0.1em] text-purple-100"
           >
             Menu
           </button>
@@ -155,34 +153,34 @@ export function Navbar() {
               transition={getFramerTransition({
                 duration: motionTokens.duration.quick,
               })}
-              className="mt-3 rounded-xl border border-white/12 bg-slate-900/70 p-4 md:hidden"
+              className="mt-3 rounded-xl border border-purple-400/12 bg-[#0a0a20]/90 p-4 backdrop-blur-xl md:hidden"
             >
               <div className="space-y-3">
                 <Link
                   href="/"
                   onClick={() => setMobileOpen(false)}
-                  className="block text-sm text-slate-200"
+                  className="block text-sm text-white/80"
                 >
                   Home
                 </Link>
                 <Link
                   href="/#connect"
                   onClick={() => setMobileOpen(false)}
-                  className="block text-sm text-slate-200"
+                  className="block text-sm text-white/80"
                 >
                   Connect
                 </Link>
                 <Link
                   href="/#about"
                   onClick={() => setMobileOpen(false)}
-                  className="block text-sm text-slate-200"
+                  className="block text-sm text-white/80"
                 >
                   About
                 </Link>
               </div>
 
               <div className="mt-4 border-t border-white/10 pt-4">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/40">
                   Product
                 </p>
                 <div className="mt-2 space-y-1">
@@ -191,13 +189,13 @@ export function Navbar() {
                       key={product.slug}
                       href={`/products/${product.slug}`}
                       onClick={() => setMobileOpen(false)}
-                      className="block rounded-md px-2 py-2 text-sm text-slate-300 hover:bg-white/5"
+                      className="block rounded-md px-2 py-2 text-sm text-white/60 hover:bg-white/5"
                     >
                       {product.name}
                     </Link>
                   ))}
                 </div>
-                <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/40">
                   Build for Users (Free)
                 </p>
                 <div className="mt-2 space-y-1">
@@ -206,7 +204,7 @@ export function Navbar() {
                       key={product.slug}
                       href={`/products/${product.slug}`}
                       onClick={() => setMobileOpen(false)}
-                      className="block rounded-md px-2 py-2 text-sm text-slate-300 hover:bg-white/5"
+                      className="block rounded-md px-2 py-2 text-sm text-white/60 hover:bg-white/5"
                     >
                       {product.name}
                     </Link>
@@ -231,13 +229,13 @@ function NavLink({ href, children, active }: NavLinkProps) {
   return (
     <Link
       href={href}
-      className={`nav-link relative text-sm font-medium transition-colors duration-300 ${
-        active ? "text-slate-100" : "text-slate-300 hover:text-slate-100"
+      className={`nav-link relative text-sm font-medium transition-colors duration-200 ${
+        active ? "text-white" : "text-white/60 hover:text-white"
       }`}
     >
       {children}
       <span
-        className={`absolute -bottom-1 left-0 h-px w-full origin-left bg-gradient-to-r from-transparent via-indigo-300 to-transparent transition-transform duration-300 ${
+        className={`absolute -bottom-1 left-0 h-px w-full origin-left bg-gradient-to-r from-purple-400 via-cyan-400 to-transparent transition-transform duration-200 ${
           active ? "scale-x-100" : "scale-x-0"
         }`}
       />
@@ -252,8 +250,8 @@ type DropdownGroupProps = {
 
 function DropdownGroup({ title, children }: DropdownGroupProps) {
   return (
-    <div className="mb-3 rounded-lg border border-white/8 bg-slate-950/35 p-3">
-      <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+    <div className="mb-3 rounded-lg border border-purple-400/10 bg-purple-950/20 p-3">
+      <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-purple-300/70">
         {title}
       </p>
       <div className="space-y-1">{children}</div>
@@ -272,7 +270,7 @@ function DropdownLink({ href, children, onSelect }: DropdownLinkProps) {
     <Link
       href={href}
       onClick={onSelect}
-      className="block rounded-md px-2 py-2 text-sm text-slate-300 transition-all duration-300 hover:translate-x-1 hover:bg-white/5 hover:text-slate-100"
+      className="block rounded-md px-2 py-2 text-sm text-white/70 transition-all duration-200 hover:translate-x-1 hover:bg-purple-500/10 hover:text-white"
     >
       {children}
     </Link>

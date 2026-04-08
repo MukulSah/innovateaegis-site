@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Manrope } from "next/font/google";
 import { Navbar } from "@/components/navbar";
+import { CursorGlow } from "@/components/cursor-effects";
+import { DevToolsBlocker } from "@/components/dev-tools-blocker";
 import "./globals.css";
 
 const manrope = Manrope({
@@ -20,7 +22,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${manrope.variable} h-full antialiased`}>
-      <body suppressHydrationWarning className="min-h-full bg-slate-950 text-slate-100">
+      <body suppressHydrationWarning className="min-h-full bg-[#050510] text-white/90">
+        <CursorGlow />
+        <DevToolsBlocker />
         <Navbar />
         {children}
       </body>
