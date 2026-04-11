@@ -805,12 +805,14 @@ function HygyrExperience({ product }: ProductDetailProps) {
         <section className="mx-auto mt-16 w-full max-w-6xl">
           <div className="enterprise-glass rounded-2xl border border-indigo-200/12 p-8 text-center">
             <p className="text-sm text-white/60">Create better resumes with less friction and full transparency.</p>
-            <button
-              type="button"
+            <a
+              href="https://hygyr.innovativeaegis.com/"
+              target="_blank"
+              rel="noopener noreferrer"
               className="glow-btn mt-5 rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 px-7 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-500/20"
             >
-              {product.ctaLabel}
-            </button>
+              Visit HYGYR Website
+            </a>
           </div>
         </section>
       </main>
