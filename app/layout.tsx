@@ -12,29 +12,29 @@ const manrope = Manrope({
 
 export const metadata: Metadata = {
   title: {
-    default: "Innovative Aegis",
-    template: "%s | Innovative Aegis",
+    default: "InnovateAegis",
+    template: "%s | InnovateAegis",
   },
   description:
-    "Innovative Aegis builds silent, intelligent systems — from AI-powered security to smart infrastructure solutions.",
+    "InnovateAegis is a product-focused AI software company building scalable systems for endpoint intelligence, face recognition attendance, and user productivity.",
   metadataBase: new URL("https://innovativeaegis.com"),
   alternates: {
     canonical: "/",
   },
   openGraph: {
     type: "website",
-    siteName: "Innovative Aegis",
-    title: "Innovative Aegis — Silent systems. Relentless intelligence.",
+    siteName: "InnovateAegis",
+    title: "InnovateAegis — Product-Grade AI Software Systems",
     description:
-      "Innovative Aegis builds silent, intelligent systems — from AI-powered security to smart infrastructure solutions.",
+      "InnovateAegis builds production-grade software products including endpoint management, face recognition attendance, and resume builder platforms.",
     url: "https://innovativeaegis.com",
     locale: "en_US",
   },
   twitter: {
     card: "summary",
-    title: "Innovative Aegis — Silent systems. Relentless intelligence.",
+    title: "InnovateAegis — Product-Grade AI Software Systems",
     description:
-      "Innovative Aegis builds silent, intelligent systems — from AI-powered security to smart infrastructure solutions.",
+      "InnovateAegis builds production-grade software products including endpoint management, face recognition attendance, and resume builder platforms.",
   },
   robots: {
     index: true,
