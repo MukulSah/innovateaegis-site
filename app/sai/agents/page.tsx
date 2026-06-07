@@ -1,5 +1,6 @@
+import Link from "next/link";
 import { SectionPage } from "@/components/sai/section-page";
-import { aiAgents } from "@/lib/sai/data";
+import { getAIAgents } from "@/lib/sai/queries";
 
 const statusDot: Record<string, string> = {
   active: "bg-emerald-400",
@@ -7,7 +8,9 @@ const statusDot: Record<string, string> = {
   idle: "bg-white/30",
 };
 
-export default function AgentsPage() {
+export default async function AgentsPage() {
+  const agents = await getAIAgents();
+
   return (
     <SectionPage
       title="AI Agents"
@@ -15,10 +18,11 @@ export default function AgentsPage() {
       description="Agents act as digital employees with names, roles, responsibilities, memory, performance metrics, and assigned projects. They collaborate with human employees."
     >
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {aiAgents.map((agent) => (
-          <article
+        {agents.map((agent) => (
+          <Link
             key={agent.id}
-            className="enterprise-glass rounded-xl border border-white/10 p-5"
+            href={`/sai/agents/${agent.id}`}
+            className="enterprise-glass rounded-xl border border-white/10 p-5 transition-colors hover:border-purple-400/25"
           >
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-white">{agent.name}</h3>
@@ -29,14 +33,14 @@ export default function AgentsPage() {
             </div>
             <p className="mt-1 text-xs text-purple-300/70">{agent.role}</p>
             <ul className="mt-3 space-y-1">
-              {agent.responsibilities.map((r) => (
+              {agent.responsibilities.slice(0, 3).map((r) => (
                 <li key={r} className="text-xs text-white/50">· {r}</li>
               ))}
             </ul>
             <p className="mt-3 text-[10px] text-white/35">
-              {agent.assignedProjects} project{agent.assignedProjects !== 1 ? "s" : ""} assigned
+              {agent.assignedProjects} project{agent.assignedProjects !== 1 ? "s" : ""} assigned · Open workspace →
             </p>
-          </article>
+          </Link>
         ))}
       </div>
     </SectionPage>

@@ -1,0 +1,420 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Company {
+  id           String   @id @default(cuid())
+  name         String
+  slug         String   @unique
+  revenue      Float    @default(0)
+  revenueTrend String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  departments    Department[]
+  users          User[]
+  objectives     Objective[]
+  projects       Project[]
+  healthMetrics  HealthMetric[]
+  aiAgents       AIAgent[]
+  customers      Customer[]
+  documents      Document[]
+  notifications  Notification[]
+  activityLogs   ActivityLog[]
+}
+
+model Department {
+  id        String @id @default(cuid())
+  name      String
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  users     User[]
+
+  @@index([companyId])
+}
+
+model User {
+  id               String         @id @default(cuid())
+  username         String         @unique
+  passwordHash     String
+  name             String
+  role             String
+  title            String?
+  departmentId     String?
+  department       Department?    @relation(fields: [departmentId], references: [id])
+  skills           String         @default("[]")
+  status           String         @default("offline")
+  currentWork      String?
+  performanceScore Int            @default(0)
+  workload         Int            @default(0)
+  companyId        String
+  company          Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  ledProjects       Project[]         @relation("ProjectLead")
+  assignedTasks     Task[]            @relation("TaskAssignee")
+  ownedDecisions    Decision[]        @relation("DecisionOwner")
+  knowledgeRecords  KnowledgeRecord[]
+  organizedMeetings Meeting[]         @relation("MeetingOrganizer")
+  meetingAttendance MeetingAttendee[]
+  activityLogs      ActivityLog[]
+  agentProfile      AIAgent?
+  documents         Document[]
+
+  @@index([companyId])
+  @@index([departmentId])
+}
+
+model AIAgent {
+  id               String      @id @default(cuid())
+  slug             String      @unique
+  name             String
+  role             String
+  responsibilities String      @default("[]")
+  status           String      @default("active")
+  performanceScore Int         @default(0)
+  currentContext   String?
+  recommendations  String      @default("[]")
+  companyId        String
+  company          Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  userId           String?     @unique
+  user             User?       @relation(fields: [userId], references: [id])
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  memories      AgentMemory[]
+  assignedTasks Task[]        @relation("TaskAgent")
+  activityLogs  ActivityLog[]
+
+  @@index([companyId])
+}
+
+model AgentMemory {
+  id        String   @id @default(cuid())
+  agentId   String
+  agent     AIAgent  @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  title     String
+  content   String
+  tags      String   @default("[]")
+  createdAt DateTime @default(now())
+
+  @@index([agentId])
+}
+
+model Objective {
+  id             String            @id @default(cuid())
+  title          String
+  businessGoal   String
+  priority       String            @default("medium")
+  targetDate     DateTime?
+  successMetrics String            @default("[]")
+  status         String            @default("not_started")
+  impactScore    Int               @default(0)
+  companyId      String
+  company        Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  projects     Project[]
+  activityLogs ActivityLog[]
+
+  @@index([companyId])
+}
+
+model Project {
+  id          String        @id @default(cuid())
+  name        String
+  description String?
+  objective   String?
+  status      String        @default("on_track")
+  progress    Int           @default(0)
+  leadId      String?
+  lead        User?         @relation("ProjectLead", fields: [leadId], references: [id])
+  objectiveId String?
+  objectiveRef Objective?   @relation(fields: [objectiveId], references: [id])
+  companyId   String
+  company     Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  epics        Epic[]
+  tasks        Task[]
+  releases     Release[]
+  milestones   Milestone[]
+  decisions    Decision[]    @relation("ProjectDecisions")
+  meetings     Meeting[]
+  activityLogs ActivityLog[]
+  documents    Document[]
+
+  @@index([companyId])
+  @@index([objectiveId])
+  @@index([leadId])
+}
+
+model Epic {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  features Feature[]
+
+  @@index([projectId])
+}
+
+model Feature {
+  id                 String  @id @default(cuid())
+  title              String
+  description        String?
+  acceptanceCriteria String  @default("[]")
+  epicId             String
+  epic               Epic    @relation(fields: [epicId], references: [id], onDelete: Cascade)
+  sortOrder          Int     @default(0)
+  createdAt          DateTime @default(now())
+
+  tasks Task[]
+
+  @@index([epicId])
+}
+
+model Task {
+  id                 String    @id @default(cuid())
+  title              String
+  description        String?
+  stage              String    @default("backlog")
+  priority           Int       @default(0)
+  isBlocker          Boolean   @default(false)
+  projectId          String
+  project            Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  featureId          String?
+  feature            Feature?  @relation(fields: [featureId], references: [id])
+  assigneeId         String?
+  assignee           User?     @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  agentId            String?
+  agent              AIAgent?  @relation("TaskAgent", fields: [agentId], references: [id])
+  dependsOnId        String?
+  dependsOn          Task?     @relation("TaskDependency", fields: [dependsOnId], references: [id])
+  dependents         Task[]    @relation("TaskDependency")
+  completedAt        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  activityLogs ActivityLog[]
+
+  @@index([projectId])
+  @@index([featureId])
+  @@index([assigneeId])
+  @@index([agentId])
+  @@index([stage])
+}
+
+model Milestone {
+  id          String    @id @default(cuid())
+  title       String
+  description String?
+  dueDate     DateTime?
+  completed   Boolean   @default(false)
+  projectId   String
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+
+  @@index([projectId])
+}
+
+model Release {
+  id          String        @id @default(cuid())
+  version     String
+  notes       String?
+  status      String        @default("planned")
+  releaseDate DateTime?
+  projectId   String?
+  project     Project?      @relation(fields: [projectId], references: [id])
+  companyId   String
+  createdAt   DateTime      @default(now())
+
+  @@index([projectId])
+  @@index([companyId])
+}
+
+model Meeting {
+  id          String      @id @default(cuid())
+  title       String
+  type        String
+  agenda      String?
+  notes       String?
+  actionItems String      @default("[]")
+  scheduledAt DateTime?
+  duration    Int?
+  projectId   String?
+  project     Project?    @relation(fields: [projectId], references: [id])
+  organizerId String?
+  organizer   User?       @relation("MeetingOrganizer", fields: [organizerId], references: [id])
+  companyId   String
+  createdAt   DateTime    @default(now())
+
+  attendees    MeetingAttendee[]
+  decisions    Decision[]
+  knowledge    KnowledgeRecord[]
+  activityLogs ActivityLog[]
+
+  @@index([companyId])
+  @@index([projectId])
+}
+
+model MeetingAttendee {
+  id        String @id @default(cuid())
+  meetingId String
+  meeting   Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([meetingId, userId])
+}
+
+model KnowledgeRecord {
+  id         String        @id @default(cuid())
+  type       String
+  title      String
+  content    String
+  summary    String?
+  tags       String        @default("[]")
+  projectId  String?
+  meetingId  String?
+  meeting    Meeting?      @relation(fields: [meetingId], references: [id])
+  decisionId String?
+  decision   Decision?     @relation(fields: [decisionId], references: [id])
+  authorId   String?
+  author     User?         @relation(fields: [authorId], references: [id])
+  companyId  String
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  @@index([companyId])
+  @@index([type])
+  @@index([projectId])
+}
+
+model Customer {
+  id           String   @id @default(cuid())
+  name         String
+  email        String?
+  company      String?
+  status       String   @default("active")
+  satisfaction Int?
+  notes        String?
+  companyId    String
+  companyRef   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+
+  @@index([companyId])
+}
+
+model Document {
+  id        String   @id @default(cuid())
+  title     String
+  content   String
+  type      String
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id])
+  authorId  String?
+  author    User?    @relation(fields: [authorId], references: [id])
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([companyId])
+  @@index([projectId])
+}
+
+model Decision {
+  id          String   @id @default(cuid())
+  title       String
+  reason      String
+  alternatives String  @default("[]")
+  impact      String?
+  ownerId     String?
+  owner       User?    @relation("DecisionOwner", fields: [ownerId], references: [id])
+  meetingId   String?
+  meeting     Meeting? @relation(fields: [meetingId], references: [id])
+  companyId   String
+  createdAt   DateTime @default(now())
+
+  projects  Project[]         @relation("ProjectDecisions")
+  knowledge KnowledgeRecord[]
+
+  @@index([companyId])
+  @@index([ownerId])
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  title     String
+  message   String
+  type      String           @default("info")
+  read      Boolean          @default(false)
+  link      String?
+  companyId String
+  company   Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt DateTime         @default(now())
+
+  @@index([companyId])
+}
+
+model ActivityLog {
+  id          String       @id @default(cuid())
+  type        String
+  title       String
+  description String?
+  metadata    String       @default("{}")
+  companyId   String
+  company     Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  userId      String?
+  user        User?        @relation(fields: [userId], references: [id])
+  agentId     String?
+  agent       AIAgent?     @relation(fields: [agentId], references: [id])
+  projectId   String?
+  project     Project?     @relation(fields: [projectId], references: [id])
+  taskId      String?
+  task        Task?        @relation(fields: [taskId], references: [id])
+  objectiveId String?
+  objective   Objective?   @relation(fields: [objectiveId], references: [id])
+  meetingId   String?
+  meeting     Meeting?     @relation(fields: [meetingId], references: [id])
+  createdAt   DateTime     @default(now())
+
+  @@index([companyId])
+  @@index([createdAt])
+  @@index([type])
+}
+
+model HealthMetric {
+  id          String       @id @default(cuid())
+  slug        String
+  label       String
+  status      String
+  score       Int
+  explanation String
+  companyId   String
+  company     Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  updatedAt   DateTime     @updatedAt
+
+  @@unique([companyId, slug])
+}
+
+model IntegrationConfig {
+  id        String   @id @default(cuid())
+  provider  String   @unique
+  enabled   Boolean  @default(false)
+  config    String   @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

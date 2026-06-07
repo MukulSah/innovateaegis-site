@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import type { AuthSession } from "@/lib/sai/auth";
 
 const navSections = [
   {
@@ -30,7 +31,11 @@ const navSections = [
   },
 ];
 
-export function SAISidebar() {
+type Props = {
+  user: AuthSession;
+};
+
+export function SAISidebar({ user }: Props) {
   const pathname = usePathname();
   const router = useRouter();
 
@@ -85,8 +90,8 @@ export function SAISidebar() {
 
       <div className="border-t border-white/10 p-4">
         <div className="mb-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
-          <p className="text-xs font-semibold text-white">Founder</p>
-          <p className="text-[10px] text-white/45">Owner & CEO</p>
+          <p className="text-xs font-semibold text-white">{user.name}</p>
+          <p className="text-[10px] text-white/45">{user.title}</p>
         </div>
         <button
           type="button"

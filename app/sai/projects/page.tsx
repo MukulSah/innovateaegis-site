@@ -1,5 +1,9 @@
+import { ExecutionGraph } from "@/components/sai/execution-graph";
+import { ObjectivesPanel } from "@/components/sai/objectives-panel";
 import { SectionPage } from "@/components/sai/section-page";
-import { projects } from "@/lib/sai/data";
+import { cookies } from "next/headers";
+import { sessionFromCookie, SAI_USER_COOKIE } from "@/lib/sai/auth";
+import { getObjectives, getProjectExecutionGraph, getProjects } from "@/lib/sai/queries";
 
 const statusStyles: Record<string, string> = {
   on_track: "text-emerald-400 bg-emerald-500/10 border-emerald-400/20",
@@ -13,14 +17,37 @@ const taskStages = [
   "Code Review", "Testing", "Approval", "Released", "Knowledge Archived",
 ];
 
-export default function ProjectsPage() {
+export default async function ProjectsPage() {
+  const cookieStore = await cookies();
+  const user = sessionFromCookie(cookieStore.get(SAI_USER_COOKIE)?.value);
+
+  const [projects, objectives] = await Promise.all([
+    getProjects(),
+    getObjectives(),
+  ]);
+
+  const sentraGraph = await getProjectExecutionGraph(
+    projects.find((p) => p.name.includes("Sentra"))?.id ?? projects[0]?.id ?? "",
+  );
+
+  const serializedObjectives = objectives.map((o) => ({
+    ...o,
+    targetDate: o.targetDate?.toISOString() ?? null,
+  }));
+
   return (
     <SectionPage
       title="Projects"
       subtitle="Objective-driven execution"
       description="The owner creates objectives. SAI automatically generates requirements, architecture, tasks, assignments, test plans, and tracks delivery through release."
     >
-      <div className="space-y-4">
+      <ObjectivesPanel
+        objectives={serializedObjectives}
+        isOwner={user?.role === "owner"}
+      />
+
+      <div className="mt-8 space-y-4">
+        <h2 className="text-sm font-semibold text-white">Active Projects</h2>
         {projects.map((project) => (
           <article
             key={project.id}
@@ -49,6 +76,17 @@ export default function ProjectsPage() {
           </article>
         ))}
       </div>
+
+      {sentraGraph && (
+        <div className="mt-8">
+          <ExecutionGraph
+            projectName={sentraGraph.name}
+            objectiveTitle={sentraGraph.objectiveRef?.title}
+            epics={sentraGraph.epics}
+            releases={sentraGraph.releases}
+          />
+        </div>
+      )}
 
       <div className="mt-8 enterprise-glass rounded-xl border border-white/10 p-5">
         <h2 className="text-sm font-semibold text-white">Task Lifecycle</h2>

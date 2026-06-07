@@ -1,7 +1,19 @@
 import { SectionPage } from "@/components/sai/section-page";
-import { companyOverview, healthMetrics } from "@/lib/sai/data";
+import { TimelinePanel } from "@/components/sai/timeline-panel";
+import { INTEGRATION_CATALOG } from "@/lib/sai/integrations";
+import {
+  getActivityTimeline,
+  getCompanyOverview,
+  getHealthMetrics,
+} from "@/lib/sai/queries";
 
-export default function AnalyticsPage() {
+export default async function AnalyticsPage() {
+  const [overview, healthMetrics, timeline] = await Promise.all([
+    getCompanyOverview(),
+    getHealthMetrics(),
+    getActivityTimeline(30),
+  ]);
+
   return (
     <SectionPage
       title="Analytics"
@@ -10,20 +22,20 @@ export default function AnalyticsPage() {
     >
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div className="enterprise-glass rounded-xl border border-white/10 p-5 text-center">
-          <p className="text-3xl font-bold text-white">{companyOverview.organizationHealthScore}</p>
+          <p className="text-3xl font-bold text-white">{overview.organizationHealthScore}</p>
           <p className="mt-1 text-xs text-white/50">Health Score</p>
         </div>
         <div className="enterprise-glass rounded-xl border border-white/10 p-5 text-center">
-          <p className="text-3xl font-bold text-white">{companyOverview.revenue}</p>
-          <p className="mt-1 text-xs text-emerald-400">{companyOverview.revenueTrend}</p>
+          <p className="text-3xl font-bold text-white">{overview.revenue}</p>
+          <p className="mt-1 text-xs text-emerald-400">{overview.revenueTrend}</p>
         </div>
         <div className="enterprise-glass rounded-xl border border-white/10 p-5 text-center">
-          <p className="text-3xl font-bold text-white">{companyOverview.activeProjects}</p>
+          <p className="text-3xl font-bold text-white">{overview.activeProjects}</p>
           <p className="mt-1 text-xs text-white/50">Active Projects</p>
         </div>
         <div className="enterprise-glass rounded-xl border border-white/10 p-5 text-center">
-          <p className="text-3xl font-bold text-white">{companyOverview.openIssues}</p>
-          <p className="mt-1 text-xs text-white/50">Open Issues</p>
+          <p className="text-3xl font-bold text-white">{overview.openIssues}</p>
+          <p className="mt-1 text-xs text-white/50">Critical Blockers</p>
         </div>
       </div>
 
@@ -48,6 +60,23 @@ export default function AnalyticsPage() {
             </div>
           </div>
         ))}
+      </div>
+
+      <div className="mt-8">
+        <TimelinePanel entries={timeline} />
+      </div>
+
+      <div className="mt-8 enterprise-glass rounded-xl border border-white/10 p-5">
+        <h2 className="text-sm font-semibold text-white">Future Integrations</h2>
+        <p className="mt-1 text-xs text-white/50">Architecture prepared for external system connections.</p>
+        <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {INTEGRATION_CATALOG.map((integration) => (
+            <div key={integration.provider} className="rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2">
+              <p className="text-xs font-medium text-white/75">{integration.name}</p>
+              <p className="text-[10px] text-white/35">{integration.description}</p>
+            </div>
+          ))}
+        </div>
       </div>
     </SectionPage>
   );

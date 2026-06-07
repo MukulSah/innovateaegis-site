@@ -1,4 +1,9 @@
-export function SAIBrainBanner() {
+type Props = {
+  dataPoints: number;
+  memories: number;
+};
+
+export function SAIBrainBanner({ dataPoints, memories }: Props) {
   return (
     <div className="relative overflow-hidden rounded-2xl border border-purple-400/20 bg-gradient-to-r from-purple-950/40 via-[#0a0a24] to-cyan-950/30 p-6 md:p-8">
       <div className="pointer-events-none absolute inset-0 sai-brain-pulse" />
@@ -18,12 +23,12 @@ export function SAIBrainBanner() {
         </div>
         <div className="flex shrink-0 items-center gap-4 rounded-xl border border-white/10 bg-white/[0.04] px-5 py-4">
           <div className="text-center">
-            <p className="text-2xl font-bold text-white">847</p>
+            <p className="text-2xl font-bold text-white">{dataPoints}</p>
             <p className="text-[10px] uppercase tracking-[0.1em] text-white/40">Data Points</p>
           </div>
           <div className="h-8 w-px bg-white/10" />
           <div className="text-center">
-            <p className="text-2xl font-bold text-white">142</p>
+            <p className="text-2xl font-bold text-white">{memories}</p>
             <p className="text-[10px] uppercase tracking-[0.1em] text-white/40">Memories</p>
           </div>
           <div className="h-8 w-px bg-white/10" />
