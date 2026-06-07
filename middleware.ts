@@ -33,5 +33,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/sai/:path*", "/login"],
+  matcher: ["/sai/:path*", "/login", "/api/sai/:path*"],
 };

@@ -1,11 +1,45 @@
 import { prisma } from "@/lib/prisma";
 import { getCompanyId } from "@/lib/sai/company";
+import { answerCustomerQuery } from "@/lib/sai/customers";
+import { formatDigitalTwinFocusAnswer } from "@/lib/sai/digital-twin";
 import { searchCompanyKnowledge } from "@/lib/sai/knowledge";
+import { searchNotionContent } from "@/lib/sai/integrations/notion";
 import { getCompanyOverview } from "@/lib/sai/queries";
+import { generateRecommendations } from "@/lib/sai/recommendations";
 
 export async function askSAI(query: string): Promise<string> {
   const q = query.toLowerCase().trim();
-  const companyId = await getCompanyId();
+
+  if (q.includes("focus on today") || q.includes("should i work") || q.includes("what should i")) {
+    return await formatDigitalTwinFocusAnswer();
+  }
+
+  const customerAnswer = await answerCustomerQuery(query);
+  if (customerAnswer) return customerAnswer;
+
+  if (q.includes("notion")) {
+    const notionResults = await searchNotionContent(query.replace("notion", "").trim() || "roadmap");
+    if (notionResults.length > 0) {
+      let response = `**From Notion (External Memory):**\n\n`;
+      notionResults.forEach((page) => {
+        response += `**${page.title}** [${page.pageType}]\n${page.content.slice(0, 200)}...\n\n`;
+      });
+      return response;
+    }
+  }
+
+  if (q.includes("prioritize") && (q.includes("sentra") || q.includes("unite"))) {
+    return await explainDecisionProposal();
+  }
+
+  if (q.includes("recommend") || q.includes("priority") || q.includes("priorities")) {
+    const recs = await generateRecommendations();
+    let response = `**SAI Recommendations:**\n\n`;
+    recs.slice(0, 8).forEach((r) => {
+      response += `- **${r.title}**: ${r.message}\n`;
+    });
+    return response;
+  }
 
   if (q.includes("delay") || (q.includes("sentra") && q.includes("why"))) {
     return await explainProjectDelay("Sentra");
@@ -434,6 +468,34 @@ function formatSearchAsAnswer(
     search.meetings.forEach((m) => {
       response += `- ${m.title} [${m.type}]${m.date ? ` — ${m.date}` : ""}\n`;
     });
+  }
+
+  return response;
+}
+
+async function explainDecisionProposal() {
+  const companyId = await getCompanyId();
+  const proposal = await prisma.decisionProposal.findFirst({
+    where: { companyId, status: "pending" },
+    include: {
+      agentInputs: { include: { agent: { select: { name: true, role: true } } } },
+    },
+  });
+
+  if (!proposal) {
+    return "No pending decision proposals requiring your approval.";
+  }
+
+  let response = `**${proposal.title}**\n${proposal.question}\n\n`;
+  response += `**Agent Analysis:**\n`;
+  proposal.agentInputs.forEach((input) => {
+    response += `\n**${input.agent.name}** (${input.agent.role})\n`;
+    response += `${input.analysis}\n`;
+    response += `→ Recommends: ${input.recommendation}\n`;
+  });
+
+  if (proposal.finalRecommendation) {
+    response += `\n**SAI Final Recommendation:**\n${proposal.finalRecommendation}`;
   }
 
   return response;

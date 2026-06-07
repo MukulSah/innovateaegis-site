@@ -4,6 +4,20 @@ import bcrypt from "bcryptjs";
 const prisma = new PrismaClient();
 
 async function main() {
+  await prisma.knowledgeGraphEdge.deleteMany();
+  await prisma.organizationalLearning.deleteMany();
+  await prisma.gitHubActivity.deleteMany();
+  await prisma.notionPage.deleteMany();
+  await prisma.revenueOpportunity.deleteMany();
+  await prisma.revenueMetric.deleteMany();
+  await prisma.saiRecommendation.deleteMany();
+  await prisma.agentCommunication.deleteMany();
+  await prisma.decisionProposalInput.deleteMany();
+  await prisma.decisionProposal.deleteMany();
+  await prisma.objectiveInitiative.deleteMany();
+  await prisma.customerContact.deleteMany();
+  await prisma.customerFeatureRequest.deleteMany();
+  await prisma.customerIssue.deleteMany();
   await prisma.activityLog.deleteMany();
   await prisma.meetingAttendee.deleteMany();
   await prisma.knowledgeRecord.deleteMany();
@@ -23,6 +37,7 @@ async function main() {
   await prisma.user.deleteMany();
   await prisma.department.deleteMany();
   await prisma.healthMetric.deleteMany();
+  await prisma.product.deleteMany();
   await prisma.customer.deleteMany();
   await prisma.integrationConfig.deleteMany();
   await prisma.company.deleteMany();
@@ -647,12 +662,190 @@ async function main() {
     ],
   });
 
+  // Phase 3: Products
+  const productSentra = await prisma.product.create({
+    data: {
+      slug: "sentra", name: "Sentra", description: "Endpoint management software",
+      healthScore: 72, healthStatus: "yellow", growthRate: "+12%", revenue: 145000,
+      roadmap: JSON.stringify(["Deployment Module", "Enterprise SSO", "Audit v2"]),
+      openRisks: JSON.stringify(["Rollback mechanism delayed", "Windows endpoint handler"]),
+      customerFeedback: JSON.stringify(["Acme needs bulk scheduling", "Strong audit demand"]),
+      technicalDebt: "Legacy agent protocol needs migration",
+      releaseReadiness: 62,
+      aiRecommendations: JSON.stringify(["Prioritize rollback PR to unblock enterprise deals"]),
+      companyId: company.id,
+    },
+  });
+  const productFaceNova = await prisma.product.create({
+    data: {
+      slug: "facenova", name: "FaceNova", description: "Face recognition attendance",
+      healthScore: 81, healthStatus: "green", growthRate: "+8%", revenue: 89000,
+      roadmap: JSON.stringify(["v2 Dashboard", "Multi-site analytics"]),
+      openRisks: JSON.stringify(["Camera failover edge cases"]),
+      customerFeedback: JSON.stringify(["Dashboard load time concerns"]),
+      releaseReadiness: 78,
+      aiRecommendations: JSON.stringify(["Launch pilot with TechFlow before GA"]),
+      companyId: company.id,
+    },
+  });
+  const productHygyr = await prisma.product.create({
+    data: {
+      slug: "hygyr", name: "HYGYR", description: "Resume builder platform",
+      healthScore: 76, healthStatus: "green", growthRate: "+22%", revenue: 32000,
+      roadmap: JSON.stringify(["Premium Tier", "SEO optimization", "AI writing"]),
+      openRisks: JSON.stringify(["PDF export bugs", "Low premium conversion"]),
+      releaseReadiness: 45,
+      aiRecommendations: JSON.stringify(["SEO improvements may increase traffic by 30%"]),
+      companyId: company.id,
+    },
+  });
+  const productUnite = await prisma.product.create({
+    data: {
+      slug: "unite", name: "Unite", description: "Company operating system",
+      healthScore: 45, healthStatus: "red", growthRate: "N/A", revenue: 0,
+      roadmap: JSON.stringify(["Phase 1 Foundation", "Intelligence Layer"]),
+      openRisks: JSON.stringify(["API contracts incomplete", "Single engineer assigned"]),
+      releaseReadiness: 28,
+      aiRecommendations: JSON.stringify(["Add second engineer before Phase 2"]),
+      companyId: company.id,
+    },
+  });
+
+  await prisma.project.update({ where: { id: projSentra.id }, data: { productId: productSentra.id } });
+  await prisma.project.update({ where: { id: projFaceNova.id }, data: { productId: productFaceNova.id } });
+  await prisma.project.update({ where: { id: projHygyr.id }, data: { productId: productHygyr.id } });
+  await prisma.project.update({ where: { id: projUnite.id }, data: { productId: productUnite.id } });
+
+  // Phase 3: Enhanced customers
+  const acme = await prisma.customer.findFirst({ where: { companyId: company.id, name: "Acme Corp" } });
+  if (acme) {
+    await prisma.customer.update({
+      where: { id: acme.id },
+      data: { revenue: 48000, contractValue: 96000 },
+    });
+    await prisma.customerContact.create({
+      data: { name: "James Wilson", email: "james@acme.com", role: "IT Director", customerId: acme.id },
+    });
+    await prisma.customerFeatureRequest.create({
+      data: {
+        title: "Bulk deployment scheduling",
+        description: "Off-hours deployment windows across 2,400 endpoints",
+        status: "in_progress", priority: "high", customerId: acme.id,
+      },
+    });
+    await prisma.customerIssue.create({
+      data: {
+        title: "Deployment window conflicts",
+        description: "Scheduled deployments overlap with maintenance windows",
+        severity: "high", status: "open", customerId: acme.id,
+      },
+    });
+  }
+
+  // Phase 3: Revenue
+  await prisma.revenueMetric.create({
+    data: {
+      mrr: 23708, arr: 284500, pipeline: 120000,
+      growthRate: "+12.4% MoM", forecast: 310000,
+      period: "2026-06", companyId: company.id,
+    },
+  });
+
+  await prisma.revenueOpportunity.createMany({
+    data: [
+      { title: "Acme Corp Enterprise Sentra", value: 96000, stage: "qualified", probability: 75, customerId: acme?.id, productId: productSentra.id, companyId: company.id },
+      { title: "TechFlow FaceNova Pilot", value: 24000, stage: "prospect", probability: 60, productId: productFaceNova.id, companyId: company.id },
+      { title: "GlobalRetail Sentra Expansion", value: 45000, stage: "prospect", probability: 40, productId: productSentra.id, companyId: company.id },
+    ],
+  });
+
+  // Phase 3: Agent communications
+  await prisma.agentCommunication.createMany({
+    data: [
+      { type: "escalation", subject: "Sentra deployment delay threatens Acme deal", content: "Project Manager Agent escalates to CEO Agent: Sentra is 8 days behind. Acme Corp deployment window is June 15.", fromAgentId: agentMap["project-mgr"].id, toAgentId: agentMap.ceo.id, companyId: company.id },
+      { type: "discussion", subject: "Resource allocation: Sentra vs Unite", content: "CEO Agent to Architect Agent: We need a technical assessment of prioritizing Sentra rollback over Unite API contracts.", fromAgentId: agentMap.ceo.id, toAgentId: agentMap.architect.id, companyId: company.id },
+      { type: "recommendation", subject: "HYGYR SEO opportunity", content: "Marketing Agent recommends SEO investment for HYGYR. Projected 30% traffic increase based on keyword analysis.", fromAgentId: agentMap.marketing.id, toAgentId: agentMap.pm.id, companyId: company.id },
+      { type: "decision", subject: "FaceNova sales pipeline gap", content: "Sales Agent reports zero qualified FaceNova opportunities. Recommends immediate outreach campaign.", fromAgentId: agentMap.sales.id, toAgentId: agentMap.ceo.id, companyId: company.id },
+      { type: "discussion", subject: "Engineer workload review", content: "COO Agent to Team Orchestrator: Karthik Nair at 90% workload. Recommend task redistribution.", fromAgentId: agentMap.coo.id, toAgentId: agentMap.orchestrator.id, companyId: company.id },
+      { type: "recommendation", subject: "QA regression priority", content: "QA Agent recommends prioritizing FaceNova v2 regression before new feature work.", fromAgentId: agentMap.qa.id, toAgentId: agentMap["project-mgr"].id, companyId: company.id },
+    ],
+  });
+
+  // Phase 3: Decision proposal
+  const proposal = await prisma.decisionProposal.create({
+    data: {
+      title: "Prioritize Sentra or Unite?",
+      question: "Should we prioritize Sentra deployment module completion or Unite Platform Phase 1?",
+      status: "pending",
+      finalRecommendation: "Prioritize Sentra for next 2 weeks to close Acme Corp deal ($96K), then reallocate to Unite. Delaying Sentra risks losing enterprise pipeline.",
+      companyId: company.id,
+    },
+  });
+
+  await prisma.decisionProposalInput.createMany({
+    data: [
+      { proposalId: proposal.id, agentId: agentMap.ceo.id, analysis: "Sentra enterprise pipeline represents $120K potential ARR this quarter. Unite is internal infrastructure with no direct revenue impact.", recommendation: "Prioritize Sentra for 2 weeks" },
+      { proposalId: proposal.id, agentId: agentMap.pm.id, analysis: "HYGYR and FaceNova customers are not blocked. Sentra delay directly impacts Acme Corp SLA.", recommendation: "Prioritize Sentra" },
+      { proposalId: proposal.id, agentId: agentMap.architect.id, analysis: "Unite API contracts block 8 tasks. Technical debt accumulates if delayed further. However, Sentra rollback is simpler scope.", recommendation: "Sentra first, then 2 engineers on Unite" },
+      { proposalId: proposal.id, agentId: agentMap.sales.id, analysis: "4 qualified Sentra leads waiting on deployment module. Zero Unite revenue opportunities.", recommendation: "Prioritize Sentra — revenue impact is immediate" },
+    ],
+  });
+
+  // Phase 3: Organizational learning
+  await prisma.organizationalLearning.createMany({
+    data: [
+      { title: "Sentra v2.4.0 Release Retrospective", whatWorked: "Agent auto-update shipped on time. Strong QA coverage.", whatFailed: "Endpoint grouping had 2 regression bugs post-release.", delays: "Code review bottleneck added 2 days", bugs: "2 P2 bugs in grouping feature", customerReaction: "Positive feedback on auto-update", engineeringLessons: "Need dedicated regression suite for agent updates", businessOutcome: "Enabled 3 new enterprise conversations", projectId: projSentra.id, companyId: company.id },
+      { title: "HYGYR Template Engine Refactor", whatWorked: "3x rendering performance improvement", whatFailed: "PDF export broke for special characters", engineeringLessons: "Always test Unicode in PDF pipeline before release", projectId: projHygyr.id, companyId: company.id },
+    ],
+  });
+
+  // Phase 3: Notion pages (external memory)
+  await prisma.notionPage.createMany({
+    data: [
+      { title: "Sentra Deployment Module PRD", content: "Full product requirements for automated deployment with rollback support across managed endpoints.", pageType: "prd", url: "https://notion.so/sentra-prd", companyId: company.id },
+      { title: "Company Wiki — Engineering Standards", content: "Code review requirements, testing standards, deployment procedures.", pageType: "wiki", url: "https://notion.so/eng-standards", companyId: company.id },
+      { title: "Q2 Product Roadmap", content: "Sentra deployment, FaceNova v2, HYGYR premium, Unite Phase 1", pageType: "roadmap", url: "https://notion.so/q2-roadmap", companyId: company.id },
+      { title: "Architecture Decision: gRPC for Sentra", content: "Decision record for choosing gRPC over REST for agent communication.", pageType: "decision", url: "https://notion.so/adr-grpc", companyId: company.id },
+    ],
+  });
+
+  // Phase 3: GitHub activity
+  await prisma.gitHubActivity.createMany({
+    data: [
+      { repo: "innovateaegis/sentra", type: "pull_request", title: "feat: deployment rollback mechanism", author: "arjun-mehta", url: "https://github.com/innovateaegis/sentra/pull/142", projectId: projSentra.id, companyId: company.id },
+      { repo: "innovateaegis/sentra", type: "issue", title: "SEN-142: Rollback fails on Windows", author: "rahul-verma", projectId: projSentra.id, companyId: company.id },
+      { repo: "innovateaegis/facenova", type: "commit", title: "fix: camera failover gap during network switch", author: "arjun-mehta", projectId: projFaceNova.id, companyId: company.id },
+      { repo: "innovateaegis/unite", type: "pull_request", title: "feat: company data model schema", author: "karthik-nair", projectId: projUnite.id, companyId: company.id },
+      { repo: "innovateaegis/hygyr", type: "release", title: "v3.1.0 — Template engine refactor", author: "karthik-nair", projectId: projHygyr.id, companyId: company.id },
+    ],
+  });
+
+  // Enable Notion + GitHub integrations (demo mode with seeded data)
+  await prisma.integrationConfig.updateMany({
+    where: { provider: { in: ["notion", "github"] } },
+    data: { enabled: true, config: JSON.stringify({ mode: "demo", syncedAt: new Date().toISOString() }) },
+  });
+
+  // Phase 3: Objective initiatives for acquisition objective
+  const acquireObj = objectives.find((o) => o.title.includes("Acquire"));
+  if (acquireObj) {
+    await prisma.objectiveInitiative.createMany({
+      data: [
+        { title: "Identify target customer segments", description: "Enterprise IT and HR departments", status: "completed", objectiveId: acquireObj.id, sortOrder: 0 },
+        { title: "Launch outbound sales campaign", description: "4 qualified Sentra leads in pipeline", status: "in_progress", objectiveId: acquireObj.id, sortOrder: 1 },
+        { title: "Create product demo pipeline", description: "Self-service demo for Sentra and FaceNova", status: "planned", objectiveId: acquireObj.id, sortOrder: 2 },
+        { title: "Develop case studies", description: "TechFlow FaceNova pilot case study", status: "planned", objectiveId: acquireObj.id, sortOrder: 3 },
+      ],
+    });
+  }
+
   console.log("✅ SAI COMPANY database seeded successfully");
   console.log(`   Company: ${company.name}`);
   console.log(`   Users: ${employees.length + 1} (1 owner + ${employees.length} employees)`);
   console.log(`   Agents: ${agents.length}`);
   console.log(`   Projects: ${projects.length}`);
   console.log(`   Objectives: ${objectives.length}`);
+  console.log(`   Products: 4 | Agent messages: 6 | Decision proposals: 1`);
 }
 
 main()

@@ -26,6 +26,16 @@ model Company {
   documents      Document[]
   notifications  Notification[]
   activityLogs   ActivityLog[]
+  products       Product[]
+  recommendations SaiRecommendation[]
+  agentMessages  AgentCommunication[]
+  decisionProposals DecisionProposal[]
+  revenueMetrics RevenueMetric[]
+  revenueOpportunities RevenueOpportunity[]
+  knowledgeEdges KnowledgeGraphEdge[]
+  learnings      OrganizationalLearning[]
+  notionPages    NotionPage[]
+  githubActivities GitHubActivity[]
 }
 
 model Department {
@@ -91,6 +101,9 @@ model AIAgent {
   memories      AgentMemory[]
   assignedTasks Task[]        @relation("TaskAgent")
   activityLogs  ActivityLog[]
+  sentMessages  AgentCommunication[] @relation("MessageFrom")
+  receivedMessages AgentCommunication[] @relation("MessageTo")
+  proposalInputs DecisionProposalInput[]
 
   @@index([companyId])
 }
@@ -123,8 +136,23 @@ model Objective {
 
   projects     Project[]
   activityLogs ActivityLog[]
+  initiatives  ObjectiveInitiative[]
 
   @@index([companyId])
+}
+
+model ObjectiveInitiative {
+  id          String    @id @default(cuid())
+  title       String
+  description String?
+  status      String    @default("planned")
+  objectiveId String
+  objective   Objective @relation(fields: [objectiveId], references: [id], onDelete: Cascade)
+  ownerId     String?
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+
+  @@index([objectiveId])
 }
 
 model Project {
@@ -138,6 +166,8 @@ model Project {
   lead        User?         @relation("ProjectLead", fields: [leadId], references: [id])
   objectiveId String?
   objectiveRef Objective?   @relation(fields: [objectiveId], references: [id])
+  productId   String?
+  product     Product?      @relation(fields: [productId], references: [id])
   companyId   String
   company     Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
   createdAt   DateTime      @default(now())
@@ -155,6 +185,7 @@ model Project {
   @@index([companyId])
   @@index([objectiveId])
   @@index([leadId])
+  @@index([productId])
 }
 
 model Epic {
@@ -311,11 +342,57 @@ model Customer {
   status       String   @default("active")
   satisfaction Int?
   notes        String?
+  revenue      Float    @default(0)
+  contractValue Float?
   companyId    String
   companyRef   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  contacts        CustomerContact[]
+  featureRequests CustomerFeatureRequest[]
+  issues          CustomerIssue[]
+  opportunities   RevenueOpportunity[]
 
   @@index([companyId])
+}
+
+model CustomerContact {
+  id         String   @id @default(cuid())
+  name       String
+  email      String?
+  role       String?
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@index([customerId])
+}
+
+model CustomerFeatureRequest {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  status      String   @default("open")
+  priority    String   @default("medium")
+  customerId  String
+  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@index([customerId])
+}
+
+model CustomerIssue {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  severity    String   @default("medium")
+  status      String   @default("open")
+  customerId  String
+  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@index([customerId])
 }
 
 model Document {
@@ -417,4 +494,200 @@ model IntegrationConfig {
   config    String   @default("{}")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model Product {
+  id               String   @id @default(cuid())
+  slug             String
+  name             String
+  description      String?
+  healthScore      Int      @default(70)
+  healthStatus     String   @default("yellow")
+  growthRate       String?
+  revenue          Float    @default(0)
+  roadmap          String   @default("[]")
+  openRisks        String   @default("[]")
+  customerFeedback String   @default("[]")
+  technicalDebt    String?
+  releaseReadiness Int      @default(0)
+  aiRecommendations String @default("[]")
+  companyId        String
+  company          Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  projects      Project[]
+  opportunities RevenueOpportunity[]
+
+  @@unique([companyId, slug])
+  @@index([companyId])
+}
+
+model SaiRecommendation {
+  id          String   @id @default(cuid())
+  category    String
+  title       String
+  message     String
+  severity    String   @default("medium")
+  entityType  String?
+  entityId    String?
+  actionLabel String?
+  actionLink  String?
+  dismissed   Boolean  @default(false)
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@index([companyId])
+  @@index([category])
+}
+
+model AgentCommunication {
+  id           String   @id @default(cuid())
+  type         String
+  subject      String
+  content      String
+  threadId     String?
+  fromAgentId  String
+  fromAgent    AIAgent  @relation("MessageFrom", fields: [fromAgentId], references: [id], onDelete: Cascade)
+  toAgentId    String?
+  toAgent      AIAgent? @relation("MessageTo", fields: [toAgentId], references: [id])
+  companyId    String
+  company      Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+
+  @@index([companyId])
+  @@index([threadId])
+  @@index([fromAgentId])
+}
+
+model DecisionProposal {
+  id                  String   @id @default(cuid())
+  question            String
+  title               String
+  status              String   @default("pending")
+  finalRecommendation String?
+  ownerDecision       String?
+  companyId           String
+  company             Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt           DateTime @default(now())
+  resolvedAt          DateTime?
+
+  agentInputs DecisionProposalInput[]
+
+  @@index([companyId])
+  @@index([status])
+}
+
+model DecisionProposalInput {
+  id             String           @id @default(cuid())
+  analysis       String
+  recommendation String
+  proposalId     String
+  proposal       DecisionProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  agentId        String
+  agent          AIAgent          @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  createdAt      DateTime         @default(now())
+
+  @@index([proposalId])
+}
+
+model RevenueMetric {
+  id          String   @id @default(cuid())
+  mrr         Float    @default(0)
+  arr         Float    @default(0)
+  pipeline    Float    @default(0)
+  growthRate  String?
+  forecast    Float    @default(0)
+  period      String
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@index([companyId])
+}
+
+model RevenueOpportunity {
+  id         String    @id @default(cuid())
+  title      String
+  value      Float
+  stage      String    @default("prospect")
+  probability Int      @default(50)
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id])
+  productId  String?
+  product    Product?  @relation(fields: [productId], references: [id])
+  companyId  String
+  company    Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt  DateTime  @default(now())
+
+  @@index([companyId])
+}
+
+model KnowledgeGraphEdge {
+  id         String   @id @default(cuid())
+  sourceType String
+  sourceId   String
+  sourceLabel String
+  targetType String
+  targetId   String
+  targetLabel String
+  relation   String
+  companyId  String
+  company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@index([companyId])
+  @@index([sourceType, sourceId])
+  @@index([targetType, targetId])
+}
+
+model OrganizationalLearning {
+  id           String   @id @default(cuid())
+  title        String
+  whatWorked   String?
+  whatFailed   String?
+  delays       String?
+  bugs         String?
+  customerReaction String?
+  engineeringLessons String?
+  businessOutcome String?
+  releaseId    String?
+  projectId    String?
+  companyId    String
+  company      Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+
+  @@index([companyId])
+}
+
+model NotionPage {
+  id         String   @id @default(cuid())
+  externalId String?
+  title      String
+  content    String
+  pageType   String
+  url        String?
+  companyId  String
+  company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  syncedAt   DateTime @default(now())
+
+  @@index([companyId])
+  @@index([pageType])
+}
+
+model GitHubActivity {
+  id        String   @id @default(cuid())
+  repo      String
+  type      String
+  title     String
+  author    String?
+  url       String?
+  projectId String?
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([companyId])
+  @@index([repo])
 }

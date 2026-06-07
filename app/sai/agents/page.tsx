@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { AgentNetworkPanel } from "@/components/sai/agent-network-panel";
 import { SectionPage } from "@/components/sai/section-page";
+import { getAgentNetworkByType } from "@/lib/sai/agent-network";
 import { getAIAgents } from "@/lib/sai/queries";
 
 const statusDot: Record<string, string> = {
@@ -9,7 +11,10 @@ const statusDot: Record<string, string> = {
 };
 
 export default async function AgentsPage() {
-  const agents = await getAIAgents();
+  const [agents, network] = await Promise.all([
+    getAIAgents(),
+    getAgentNetworkByType(),
+  ]);
 
   return (
     <SectionPage
@@ -42,6 +47,15 @@ export default async function AgentsPage() {
             </p>
           </Link>
         ))}
+      </div>
+
+      <div className="mt-10">
+        <AgentNetworkPanel
+          discussions={network.discussions}
+          recommendations={network.recommendations}
+          decisions={network.decisions}
+          escalations={network.escalations}
+        />
       </div>
     </SectionPage>
   );

@@ -1,8 +1,12 @@
 import { SectionPage } from "@/components/sai/section-page";
+import { getOrganizationalLearnings } from "@/lib/sai/learning";
 import { getReleases } from "@/lib/sai/queries";
 
 export default async function ReleasesPage() {
-  const releases = await getReleases();
+  const [releases, learnings] = await Promise.all([
+    getReleases(),
+    getOrganizationalLearnings(10),
+  ]);
 
   return (
     <SectionPage
@@ -34,6 +38,50 @@ export default async function ReleasesPage() {
               }`}>
                 {release.status}
               </span>
+            </div>
+          </article>
+        ))}
+      </div>
+
+      <div className="mt-10 space-y-4">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-purple-300/70">
+            Organizational Learning Engine
+          </p>
+          <h2 className="mt-1 text-lg font-bold text-white">The company learns from every release</h2>
+          <p className="mt-1 text-xs text-white/45">
+            What worked, what failed, delays, bugs, customer reactions, and engineering lessons — archived for future projects.
+          </p>
+        </div>
+
+        {learnings.map((learning) => (
+          <article key={learning.id} className="enterprise-glass rounded-xl border border-white/10 p-5">
+            <h3 className="text-sm font-semibold text-white">{learning.title}</h3>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              {learning.whatWorked && (
+                <div>
+                  <p className="text-[10px] uppercase tracking-[0.1em] text-emerald-300/70">What Worked</p>
+                  <p className="mt-1 text-xs text-white/55">{learning.whatWorked}</p>
+                </div>
+              )}
+              {learning.whatFailed && (
+                <div>
+                  <p className="text-[10px] uppercase tracking-[0.1em] text-red-300/70">What Failed</p>
+                  <p className="mt-1 text-xs text-white/55">{learning.whatFailed}</p>
+                </div>
+              )}
+              {learning.engineeringLessons && (
+                <div>
+                  <p className="text-[10px] uppercase tracking-[0.1em] text-cyan-300/70">Engineering Lessons</p>
+                  <p className="mt-1 text-xs text-white/55">{learning.engineeringLessons}</p>
+                </div>
+              )}
+              {learning.businessOutcome && (
+                <div>
+                  <p className="text-[10px] uppercase tracking-[0.1em] text-purple-300/70">Business Outcome</p>
+                  <p className="mt-1 text-xs text-white/55">{learning.businessOutcome}</p>
+                </div>
+              )}
             </div>
           </article>
         ))}
