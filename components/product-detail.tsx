@@ -45,6 +45,8 @@ const SENTRA_CONNECTIONS = [
   [0, 1], [0, 2], [1, 3], [2, 4], [1, 2], [3, 5], [4, 5], [3, 4],
 ];
 
+const SENTRA_ACTIVITY_BARS = [0.28, 0.54, 0.72, 0.36, 0.64, 0.42, 0.78, 0.48, 0.68, 0.32, 0.58, 0.74];
+
 function SentraExperience({ product }: ProductDetailProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [activeNode, setActiveNode] = useState<string | null>(null);
@@ -288,12 +290,12 @@ function SentraExperience({ product }: ProductDetailProps) {
               <div className="h-px flex-1 bg-gradient-to-r from-transparent via-blue-400/30 to-transparent" />
             </div>
             <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-6">
-              {Array.from({ length: 12 }).map((_, i) => (
+              {SENTRA_ACTIVITY_BARS.map((scale, i) => (
                 <div key={i} className="h-8 rounded border border-blue-200/8 bg-[#0a0a20]/40">
                   <motion.div
                     className="h-full rounded bg-blue-500/20"
                     initial={{ scaleX: 0 }}
-                    whileInView={{ scaleX: Math.random() * 0.6 + 0.2 }}
+                    whileInView={{ scaleX: scale }}
                     viewport={{ once: true }}
                     transition={{ delay: i * 0.04, duration: motionTokens.duration.emphasis }}
                     style={{ transformOrigin: "left" }}

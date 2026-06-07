@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { SAI_SESSION_KEY } from "@/components/sai-login-form";
 
@@ -10,20 +10,15 @@ type SaiAuthGateProps = {
 
 export function SaiAuthGate({ children }: SaiAuthGateProps) {
   const router = useRouter();
-  const [isReady, setIsReady] = useState(false);
+  const hasSession = useSyncExternalStore(subscribeToSession, getSessionSnapshot, getServerSessionSnapshot);
 
   useEffect(() => {
-    const session = window.localStorage.getItem(SAI_SESSION_KEY);
-
-    if (!session) {
+    if (!hasSession) {
       router.replace("/login");
-      return;
     }
+  }, [hasSession, router]);
 
-    setIsReady(true);
-  }, [router]);
-
-  if (!isReady) {
+  if (!hasSession) {
     return (
       <main className="flex min-h-screen items-center justify-center px-6">
         <div className="enterprise-glass rounded-3xl border border-white/10 p-8 text-center">
@@ -54,4 +49,18 @@ export function SaiLogoutButton() {
       Logout
     </button>
   );
+}
+
+function subscribeToSession(onStoreChange: () => void) {
+  window.addEventListener("storage", onStoreChange);
+
+  return () => window.removeEventListener("storage", onStoreChange);
+}
+
+function getSessionSnapshot() {
+  return Boolean(window.localStorage.getItem(SAI_SESSION_KEY));
+}
+
+function getServerSessionSnapshot() {
+  return false;
 }
