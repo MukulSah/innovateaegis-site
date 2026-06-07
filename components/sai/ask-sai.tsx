@@ -84,7 +84,7 @@ export function AskSAIPanel() {
         <div className="hidden items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1 sm:flex">
           <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
           <span className="text-[10px] font-medium uppercase tracking-[0.1em] text-emerald-300">
-            SAI Brain Online
+            Live Data
           </span>
         </div>
       </div>
@@ -124,7 +124,7 @@ export function AskSAIPanel() {
                 >
                   {msg.role === "assistant" && (
                     <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-purple-300/70">
-                      SAI Brain
+                      SAI
                     </p>
                   )}
                   <div className="whitespace-pre-wrap">{msg.content}</div>

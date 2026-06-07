@@ -1,62 +1,37 @@
-import Link from "next/link";
-import { AgentNetworkPanel } from "@/components/sai/agent-network-panel";
+import { AgentAssistPanel } from "@/components/sai/agent-assist-panel";
 import { SectionPage } from "@/components/sai/section-page";
-import { getAgentNetworkByType } from "@/lib/sai/agent-network";
-import { getAIAgents } from "@/lib/sai/queries";
-
-const statusDot: Record<string, string> = {
-  active: "bg-emerald-400",
-  busy: "bg-amber-400",
-  idle: "bg-white/30",
-};
+import { getAgentDrafts } from "@/lib/sai/agent-drafts";
 
 export default async function AgentsPage() {
-  const [agents, network] = await Promise.all([
-    getAIAgents(),
-    getAgentNetworkByType(),
-  ]);
+  const drafts = await getAgentDrafts();
 
   return (
     <SectionPage
       title="AI Agents"
-      subtitle="Digital employees"
-      description="Agents act as digital employees with names, roles, responsibilities, memory, performance metrics, and assigned projects. They collaborate with human employees."
+      subtitle="Human-assisted drafts"
+      description="Agents help humans by generating architecture drafts, test plans, task breakdowns, and release notes. All outputs require review."
     >
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {agents.map((agent) => (
-          <Link
-            key={agent.id}
-            href={`/sai/agents/${agent.id}`}
-            className="enterprise-glass rounded-xl border border-white/10 p-5 transition-colors hover:border-purple-400/25"
-          >
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-white">{agent.name}</h3>
-              <div className="flex items-center gap-2">
-                <span className={`h-2 w-2 rounded-full ${statusDot[agent.status]}`} />
-                <span className="text-xs font-bold text-purple-300">{agent.performanceScore}</span>
-              </div>
-            </div>
-            <p className="mt-1 text-xs text-purple-300/70">{agent.role}</p>
-            <ul className="mt-3 space-y-1">
-              {agent.responsibilities.slice(0, 3).map((r) => (
-                <li key={r} className="text-xs text-white/50">· {r}</li>
-              ))}
-            </ul>
-            <p className="mt-3 text-[10px] text-white/35">
-              {agent.assignedProjects} project{agent.assignedProjects !== 1 ? "s" : ""} assigned · Open workspace →
-            </p>
-          </Link>
-        ))}
-      </div>
+      <AgentAssistPanel />
 
-      <div className="mt-10">
-        <AgentNetworkPanel
-          discussions={network.discussions}
-          recommendations={network.recommendations}
-          decisions={network.decisions}
-          escalations={network.escalations}
-        />
-      </div>
+      {drafts.length > 0 && (
+        <div className="mt-8 space-y-3">
+          <h2 className="text-sm font-semibold text-white">Recent Drafts</h2>
+          {drafts.map((draft) => (
+            <article key={draft.id} className="enterprise-glass rounded-xl border border-white/10 p-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-medium text-white">{draft.title}</h3>
+                <span className="rounded-full border border-amber-400/20 bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-200">
+                  {draft.status.replace(/_/g, " ")}
+                </span>
+              </div>
+              <p className="mt-2 line-clamp-3 font-mono text-xs text-white/55">{draft.content}</p>
+              <p className="mt-2 text-[10px] text-white/30">
+                {draft.agentType} · {draft.createdAt.toISOString().slice(0, 10)}
+              </p>
+            </article>
+          ))}
+        </div>
+      )}
     </SectionPage>
   );
 }

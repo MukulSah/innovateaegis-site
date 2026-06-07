@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { createAutonomousObjective } from "@/lib/sai/autonomous-objectives";
+import { createObjectiveWithExecution } from "@/lib/sai/execution";
 import { getObjectives } from "@/lib/sai/queries";
 import { SAI_AUTH_COOKIE, sessionFromCookie, SAI_USER_COOKIE } from "@/lib/sai/auth";
 
@@ -43,7 +43,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Title and business goal are required" }, { status: 400 });
   }
 
-  const result = await createAutonomousObjective({
+  const result = await createObjectiveWithExecution({
     title: title.trim(),
     businessGoal: businessGoal.trim(),
     priority: priority as never,

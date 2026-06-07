@@ -1,501 +1,246 @@
 import { prisma } from "@/lib/prisma";
 import { getCompanyId } from "@/lib/sai/company";
-import { answerCustomerQuery } from "@/lib/sai/customers";
-import { formatDigitalTwinFocusAnswer } from "@/lib/sai/digital-twin";
 import { searchCompanyKnowledge } from "@/lib/sai/knowledge";
-import { searchNotionContent } from "@/lib/sai/integrations/notion";
-import { getCompanyOverview } from "@/lib/sai/queries";
-import { generateRecommendations } from "@/lib/sai/recommendations";
 
 export async function askSAI(query: string): Promise<string> {
-  const q = query.toLowerCase().trim();
+  const q = query.trim();
+  if (!q) return "Please enter a question about your company data.";
 
-  if (q.includes("focus on today") || q.includes("should i work") || q.includes("what should i")) {
-    return await formatDigitalTwinFocusAnswer();
+  const companyId = await getCompanyId();
+  const ql = q.toLowerCase();
+
+  if (ql.includes("block") || ql.includes("blocking")) {
+    const projectFilter = await extractProjectName(companyId, ql);
+    return await answerBlockers(companyId, projectFilter);
   }
 
-  const customerAnswer = await answerCustomerQuery(query);
-  if (customerAnswer) return customerAnswer;
-
-  if (q.includes("notion")) {
-    const notionResults = await searchNotionContent(query.replace("notion", "").trim() || "roadmap");
-    if (notionResults.length > 0) {
-      let response = `**From Notion (External Memory):**\n\n`;
-      notionResults.forEach((page) => {
-        response += `**${page.title}** [${page.pageType}]\n${page.content.slice(0, 200)}...\n\n`;
-      });
-      return response;
-    }
+  if (ql.includes("overdue") && ql.includes("objective")) {
+    return await answerOverdueObjectives(companyId);
   }
 
-  if (q.includes("prioritize") && (q.includes("sentra") || q.includes("unite"))) {
-    return await explainDecisionProposal();
+  if (ql.includes("workload") || ql.includes("overloaded")) {
+    return await answerWorkload(companyId);
   }
 
-  if (q.includes("recommend") || q.includes("priority") || q.includes("priorities")) {
-    const recs = await generateRecommendations();
-    let response = `**SAI Recommendations:**\n\n`;
-    recs.slice(0, 8).forEach((r) => {
-      response += `- **${r.title}**: ${r.message}\n`;
-    });
-    return response;
+  if ((ql.includes("complete") || ql.includes("finished")) && ql.includes("week")) {
+    return await answerWeeklyCompletions(companyId);
   }
 
-  if (q.includes("delay") || (q.includes("sentra") && q.includes("why"))) {
-    return await explainProjectDelay("Sentra");
+  if (ql.includes("risk") || ql.includes("at risk")) {
+    return await answerProjectsAtRisk(companyId);
   }
 
-  if (q.includes("overload") || q.includes("overloaded")) {
-    return await explainWorkload();
+  if (ql.includes("release") && (ql.includes("upcoming") || ql.includes("next"))) {
+    return await answerUpcomingReleases(companyId);
   }
 
-  if (q.includes("finish") && (q.includes("week") || q.includes("completed"))) {
-    return await explainWeeklyCompletions();
+  const search = await searchCompanyKnowledge(q);
+  if (search.totalResults > 0) {
+    return formatSearchResults(q, search);
   }
 
-  if (q.includes("decision") && q.includes("hygyr")) {
-    return await explainDecisionsForProject("HYGYR");
-  }
-
-  if (q.includes("blocker") || q.includes("critical")) {
-    return await explainBlockers();
-  }
-
-  if (q.includes("open bug") || q.includes("bugs") || q.includes("issues")) {
-    return await explainOpenIssues();
-  }
-
-  if (q.includes("at risk") || q.includes("risk")) {
-    return await explainAtRiskProjects();
-  }
-
-  if (q.includes("work on today") || q.includes("should i work")) {
-    return await recommendTodayWork();
-  }
-
-  if (q.includes("roadmap") && q.includes("unite")) {
-    return await explainUniteRoadmap();
-  }
-
-  if (q.length > 2) {
-    const search = await searchCompanyKnowledge(query);
-    if (search.totalResults > 0) {
-      return formatSearchAsAnswer(query, search);
-    }
-  }
-
-  const overview = await getCompanyOverview();
-  return `I've analyzed your query against the company database.
-
-**Current Snapshot:**
-- ${overview.activeProjects} active projects
-- ${overview.employeesOnline}/${overview.totalEmployees} employees online
-- ${overview.aiAgentsActive} AI agents active
-- Organization Health: ${overview.organizationHealthScore}/100
-- Revenue: ${overview.revenue} (${overview.revenueTrend})
-- ${overview.openIssues} critical blockers open
-
-Try asking:
-- "Why is Sentra delayed?"
-- "Which engineer is overloaded?"
-- "Show all critical blockers"
-- "What did we finish this week?"
-- "Which decisions affected HYGYR?"`;
+  return await answerGeneralSnapshot(companyId);
 }
 
-async function explainProjectDelay(projectName: string) {
-  const companyId = await getCompanyId();
-  const project = await prisma.project.findFirst({
-    where: { companyId, name: { contains: projectName } },
-    include: {
-      lead: true,
-      tasks: {
-        where: { stage: { notIn: ["released", "archived"] } },
-        include: { assignee: true },
+async function answerBlockers(companyId: string, projectFilter: string | null) {
+  const blockers = await prisma.task.findMany({
+    where: {
+      project: {
+        companyId,
+        ...(projectFilter ? { name: { contains: projectFilter } } : {}),
       },
-      decisions: true,
+      isBlocker: true,
+      stage: { notIn: ["released", "archived"] },
+    },
+    include: {
+      project: { select: { name: true } },
+      assignee: { select: { name: true } },
     },
   });
 
-  if (!project) {
-    return `No project matching "${projectName}" found in the company database.`;
+  if (blockers.length === 0) {
+    return projectFilter
+      ? `No open blockers found for project matching "${projectFilter}".`
+      : "No critical blockers in the system.";
   }
 
-  const blockers = project.tasks.filter((t) => t.isBlocker);
-  const inReview = project.tasks.filter((t) => t.stage === "code_review");
-  const delayed = project.status === "delayed";
-
-  let response = `**${project.name}** is ${delayed ? "delayed" : project.status.replace(/_/g, " ")} (${project.progress}% complete).\n\n`;
-  response += `**Lead:** ${project.lead?.name ?? "Unassigned"}\n`;
-  response += `**Open tasks:** ${project.tasks.length}\n\n`;
-
-  if (blockers.length > 0) {
-    response += `**Blockers (${blockers.length}):**\n`;
-    blockers.forEach((t) => {
-      response += `- ${t.title} (${t.stage.replace(/_/g, " ")}) — ${t.assignee?.name ?? "Unassigned"}\n`;
-    });
+  let response = `**${blockers.length} open blocker(s):**\n\n`;
+  blockers.forEach((t) => {
+    response += `- **${t.title}** [${t.project.name}] — ${t.stage.replace(/_/g, " ")}`;
+    if (t.assignee) response += ` (${t.assignee.name})`;
+    if (t.dueDate) response += ` — due ${t.dueDate.toISOString().slice(0, 10)}`;
     response += "\n";
-  }
-
-  if (inReview.length > 0) {
-    response += `**In Code Review (${inReview.length}):**\n`;
-    inReview.forEach((t) => {
-      response += `- ${t.title}\n`;
-    });
-    response += "\n";
-  }
-
-  const relatedKnowledge = await prisma.knowledgeRecord.findMany({
-    where: { projectId: project.id },
-    take: 3,
-    orderBy: { createdAt: "desc" },
   });
-
-  if (relatedKnowledge.length > 0) {
-    response += `**From Company Memory:**\n`;
-    relatedKnowledge.forEach((k) => {
-      response += `- ${k.title}\n`;
-    });
-  }
-
   return response;
 }
 
-async function explainWorkload() {
-  const companyId = await getCompanyId();
+async function answerOverdueObjectives(companyId: string) {
+  const objectives = await prisma.objective.findMany({
+    where: {
+      companyId,
+      status: { notIn: ["completed", "cancelled"] },
+      targetDate: { lt: new Date() },
+    },
+    orderBy: { targetDate: "asc" },
+  });
+
+  if (objectives.length === 0) return "No objectives are overdue.";
+
+  let response = `**${objectives.length} overdue objective(s):**\n\n`;
+  objectives.forEach((o) => {
+    response += `- **${o.title}** — due ${o.targetDate?.toISOString().slice(0, 10) ?? "N/A"} (${o.status.replace(/_/g, " ")})\n`;
+  });
+  return response;
+}
+
+async function answerWorkload(companyId: string) {
   const employees = await prisma.user.findMany({
     where: { companyId, role: "employee" },
     include: {
       assignedTasks: {
         where: { stage: { notIn: ["released", "archived"] } },
       },
-      department: true,
     },
   });
 
+  if (employees.length === 0) return "No employees in the system. Add employees to assign work.";
+
   const sorted = employees
-    .map((e) => ({ ...e, activeTasks: e.assignedTasks.length }))
-    .sort((a, b) => b.activeTasks - a.activeTasks);
+    .map((e) => ({ name: e.name, count: e.assignedTasks.length, title: e.title }))
+    .sort((a, b) => b.count - a.count);
 
-  const overloaded = sorted.filter((e) => e.activeTasks >= 3 || e.workload >= 80);
-
-  if (overloaded.length === 0) {
-    return "No engineers are currently overloaded. Team workload is balanced across active projects.";
-  }
-
-  let response = `**Overloaded Team Members (${overloaded.length}):**\n\n`;
-  overloaded.forEach((e) => {
-    response += `**${e.name}** (${e.title ?? "Engineer"}, ${e.department?.name ?? "General"})\n`;
-    response += `- Active tasks: ${e.activeTasks}\n`;
-    response += `- Workload score: ${e.workload}%\n`;
-    response += `- Current work: ${e.currentWork ?? "N/A"}\n\n`;
+  let response = `**Team workload:**\n\n`;
+  sorted.forEach((e) => {
+    response += `- ${e.name} (${e.title ?? "Employee"}): ${e.count} active task(s)\n`;
   });
-
+  response += `\nHighest: **${sorted[0].name}** with ${sorted[0].count} tasks.`;
   return response;
 }
 
-async function explainWeeklyCompletions() {
-  const companyId = await getCompanyId();
+async function answerWeeklyCompletions(companyId: string) {
   const weekAgo = new Date();
   weekAgo.setDate(weekAgo.getDate() - 7);
 
   const completed = await prisma.task.findMany({
     where: {
       project: { companyId },
-      completedAt: { gte: weekAgo },
-    },
-    include: {
-      assignee: true,
-      project: { select: { name: true } },
-    },
-    orderBy: { completedAt: "desc" },
-    take: 20,
-  });
-
-  if (completed.length === 0) {
-    const released = await prisma.task.findMany({
-      where: {
-        project: { companyId },
-        stage: { in: ["released", "archived"] },
-        updatedAt: { gte: weekAgo },
-      },
-      include: { assignee: true, project: { select: { name: true } } },
-      take: 15,
-    });
-
-    if (released.length === 0) {
-      return "No tasks were completed this week according to company records.";
-    }
-
-    let response = `**Completed This Week (${released.length} tasks):**\n\n`;
-    released.forEach((t) => {
-      response += `✅ ${t.title} — ${t.project.name} (${t.assignee?.name ?? "Unassigned"})\n`;
-    });
-    return response;
-  }
-
-  let response = `**Completed This Week (${completed.length} tasks):**\n\n`;
-  completed.forEach((t) => {
-    response += `✅ ${t.title} — ${t.project.name} (${t.assignee?.name ?? "Unassigned"})\n`;
-  });
-  return response;
-}
-
-async function explainDecisionsForProject(projectName: string) {
-  const companyId = await getCompanyId();
-  const decisions = await prisma.decision.findMany({
-    where: {
-      companyId,
-      projects: { some: { name: { contains: projectName } } },
-    },
-    include: { owner: true, projects: true },
-    orderBy: { createdAt: "desc" },
-  });
-
-  if (decisions.length === 0) {
-  const knowledge = await prisma.knowledgeRecord.findMany({
-    where: {
-      companyId,
-      type: { in: ["decision", "project_decision"] },
       OR: [
-        { title: { contains: projectName } },
-        { content: { contains: projectName } },
+        { completedAt: { gte: weekAgo } },
+        { stage: { in: ["released", "archived"] }, updatedAt: { gte: weekAgo } },
       ],
     },
-    take: 5,
-  });
-
-    if (knowledge.length === 0) {
-      return `No decisions found linked to ${projectName} in the company database.`;
-    }
-
-    let response = `**Decisions affecting ${projectName}:**\n\n`;
-    knowledge.forEach((k) => {
-      response += `**${k.title}** (${k.createdAt.toISOString().slice(0, 10)})\n${k.summary ?? k.content.slice(0, 150)}\n\n`;
-    });
-    return response;
-  }
-
-  let response = `**Decisions affecting ${projectName} (${decisions.length}):**\n\n`;
-  decisions.forEach((d) => {
-    response += `**${d.title}** — ${d.owner?.name ?? "Unknown"}\n`;
-    response += `${d.reason}\n`;
-    if (d.impact) response += `Impact: ${d.impact}\n`;
-    response += "\n";
-  });
-  return response;
-}
-
-async function explainBlockers() {
-  const companyId = await getCompanyId();
-  const blockers = await prisma.task.findMany({
-    where: {
-      project: { companyId },
-      isBlocker: true,
-      stage: { notIn: ["released", "archived"] },
-    },
     include: {
+      assignee: { select: { name: true } },
       project: { select: { name: true } },
-      assignee: true,
     },
-    orderBy: { priority: "desc" },
+    orderBy: { updatedAt: "desc" },
+    take: 25,
   });
 
-  if (blockers.length === 0) {
-    return "No critical blockers currently open. All projects are progressing.";
-  }
+  if (completed.length === 0) return "No tasks completed in the last 7 days.";
 
-  let response = `**Critical Blockers (${blockers.length}):**\n\n`;
-  blockers.forEach((t) => {
-    response += `🔴 **${t.title}**\n`;
-    response += `   Project: ${t.project.name} | Stage: ${t.stage.replace(/_/g, " ")} | Owner: ${t.assignee?.name ?? "Unassigned"}\n\n`;
+  let response = `**${completed.length} task(s) completed this week:**\n\n`;
+  completed.forEach((t) => {
+    response += `- ${t.title} [${t.project.name}]${t.assignee ? ` — ${t.assignee.name}` : ""}\n`;
   });
   return response;
 }
 
-async function explainOpenIssues() {
-  const companyId = await getCompanyId();
-  const issues = await prisma.task.findMany({
-    where: {
-      project: { companyId },
-      stage: { in: ["testing", "code_review", "in_progress"] },
-      OR: [{ isBlocker: true }, { title: { contains: "bug" } }, { title: { contains: "fix" } }],
-    },
-    include: { project: { select: { name: true } }, assignee: true },
-    take: 20,
-  });
-
-  const allOpen = await prisma.task.count({
-    where: {
-      project: { companyId },
-      stage: { notIn: ["released", "archived"] },
-    },
-  });
-
-  let response = `**${allOpen} open tasks** across the company.\n\n`;
-
-  if (issues.length > 0) {
-    response += `**Priority Issues (${issues.length}):**\n`;
-    issues.forEach((t) => {
-      response += `- [${t.project.name}] ${t.title} — ${t.stage.replace(/_/g, " ")} (${t.assignee?.name ?? "Unassigned"})\n`;
-    });
-  }
-
-  return response;
-}
-
-async function explainAtRiskProjects() {
-  const companyId = await getCompanyId();
+async function answerProjectsAtRisk(companyId: string) {
   const projects = await prisma.project.findMany({
     where: { companyId, status: { in: ["at_risk", "delayed"] } },
-    include: { lead: true, tasks: { where: { isBlocker: true } } },
+    include: { lead: { select: { name: true } } },
   });
 
-  if (projects.length === 0) {
-    return "All projects are on track. No projects currently at risk or delayed.";
-  }
+  if (projects.length === 0) return "All projects are on track.";
 
-  let response = `**Projects Needing Attention (${projects.length}):**\n\n`;
+  let response = `**${projects.length} project(s) at risk or delayed:**\n\n`;
   projects.forEach((p) => {
-    const icon = p.status === "delayed" ? "🔴" : "🟡";
-    response += `${icon} **${p.name}** — ${p.status.replace(/_/g, " ")} (${p.progress}%)\n`;
-    response += `   Lead: ${p.lead?.name ?? "Unassigned"} | Blockers: ${p.tasks.length}\n\n`;
-  });
-  return response;
-}
-
-async function recommendTodayWork() {
-  const overview = await getCompanyOverview();
-  const blockers = await explainBlockers();
-  const atRisk = await explainAtRiskProjects();
-
-  return `Based on real company data, here are your highest-impact actions today:
-
-**Organization Health:** ${overview.organizationHealthScore}/100
-**Revenue:** ${overview.revenue} (${overview.revenueTrend})
-
-${atRisk}
-
-${blockers}
-
-**Recommended focus:** Address delayed projects first, unblock critical tasks, then review at-risk objectives.`;
-}
-
-async function explainUniteRoadmap() {
-  const companyId = await getCompanyId();
-  const project = await prisma.project.findFirst({
-    where: { companyId, name: { contains: "Unite" } },
-    include: {
-      epics: { include: { features: { include: { tasks: true } } } },
-      milestones: { orderBy: { dueDate: "asc" } },
-    },
-  });
-
-  if (!project) {
-    return "Unite Platform project not found in database.";
-  }
-
-  let response = `**${project.name} Roadmap** (${project.progress}% complete)\n\n`;
-
-  if (project.milestones.length > 0) {
-    response += `**Milestones:**\n`;
-    project.milestones.forEach((m) => {
-      response += `- ${m.title}${m.dueDate ? ` (${m.dueDate.toISOString().slice(0, 10)})` : ""} ${m.completed ? "✅" : ""}\n`;
-    });
+    response += `- **${p.name}** — ${p.status.replace(/_/g, " ")} (${p.progress}%)`;
+    if (p.lead) response += ` — lead: ${p.lead.name}`;
     response += "\n";
-  }
-
-  response += `**Execution Graph:**\n`;
-  project.epics.forEach((epic) => {
-    response += `\n▣ ${epic.title}\n`;
-    epic.features.forEach((feature) => {
-      const done = feature.tasks.filter((t) => ["released", "archived"].includes(t.stage)).length;
-      response += `  → ${feature.title} (${done}/${feature.tasks.length} tasks)\n`;
-    });
   });
-
   return response;
 }
 
-function formatSearchAsAnswer(
+async function answerUpcomingReleases(companyId: string) {
+  const releases = await prisma.release.findMany({
+    where: { companyId, status: { in: ["planned", "in_progress"] } },
+    include: { project: { select: { name: true } } },
+    orderBy: { releaseDate: "asc" },
+    take: 10,
+  });
+
+  if (releases.length === 0) return "No upcoming releases scheduled.";
+
+  let response = `**Upcoming releases:**\n\n`;
+  releases.forEach((r) => {
+    response += `- **${r.version}** [${r.project?.name ?? "No project"}] — ${r.releaseDate?.toISOString().slice(0, 10) ?? "TBD"} (${r.status})\n`;
+  });
+  return response;
+}
+
+async function answerGeneralSnapshot(companyId: string) {
+  const [projects, objectives, tasks, blockers, employees] = await Promise.all([
+    prisma.project.count({ where: { companyId } }),
+    prisma.objective.count({ where: { companyId, status: { notIn: ["completed", "cancelled"] } } }),
+    prisma.task.count({ where: { project: { companyId }, stage: { notIn: ["released", "archived"] } } }),
+    prisma.task.count({ where: { project: { companyId }, isBlocker: true, stage: { notIn: ["released", "archived"] } } }),
+    prisma.user.count({ where: { companyId, role: "employee" } }),
+  ]);
+
+  if (projects === 0) {
+    return "Your company has no data yet. Create a project from the Projects page to get started.";
+  }
+
+  return `**Company snapshot** (from your data):
+
+- ${projects} project(s)
+- ${objectives} active objective(s)
+- ${tasks} open task(s)
+- ${blockers} blocker(s)
+- ${employees} employee(s)
+
+Try asking:
+- "What is blocking [project name]?"
+- "Which objectives are overdue?"
+- "What was completed this week?"
+- "Which engineer has the highest workload?"`;
+}
+
+async function extractProjectName(companyId: string, query: string): Promise<string | null> {
+  const projects = await prisma.project.findMany({
+    where: { companyId },
+    select: { name: true },
+  });
+  const found = projects.find((p) => query.includes(p.name.toLowerCase()));
+  return found?.name ?? null;
+}
+
+function formatSearchResults(
   query: string,
   search: Awaited<ReturnType<typeof searchCompanyKnowledge>>,
 ) {
-  let response = `**Search results for "${query}"** (${search.totalResults} matches)\n\n`;
+  let response = `**Results for "${query}"** (${search.totalResults} matches)\n\n`;
 
   if (search.projects.length > 0) {
-    response += `**Projects (${search.projects.length}):**\n`;
-    search.projects.forEach((p) => {
-      response += `- ${p.name} — ${p.status} (${p.progress}%)\n`;
-    });
+    response += `**Projects:**\n`;
+    search.projects.forEach((p) => { response += `- ${p.name} (${p.status}, ${p.progress}%)\n`; });
     response += "\n";
   }
-
   if (search.tasks.length > 0) {
-    response += `**Tasks (${search.tasks.length}):**\n`;
-    search.tasks.forEach((t) => {
-      response += `- [${t.project}] ${t.title} — ${t.stage}${t.assignee ? ` (${t.assignee})` : ""}\n`;
-    });
+    response += `**Tasks:**\n`;
+    search.tasks.forEach((t) => { response += `- [${t.project}] ${t.title} — ${t.stage}\n`; });
     response += "\n";
   }
-
   if (search.knowledge.length > 0) {
-    response += `**Knowledge (${search.knowledge.length}):**\n`;
-    search.knowledge.forEach((k) => {
-      response += `- ${k.title} [${k.type}] — ${k.summary}\n`;
-    });
+    response += `**Knowledge:**\n`;
+    search.knowledge.forEach((k) => { response += `- ${k.title}\n`; });
     response += "\n";
   }
-
-  if (search.decisions.length > 0) {
-    response += `**Decisions (${search.decisions.length}):**\n`;
-    search.decisions.forEach((d) => {
-      response += `- ${d.title}: ${d.reason}\n`;
-    });
-    response += "\n";
-  }
-
-  if (search.engineers.length > 0) {
-    response += `**Engineers (${search.engineers.length}):**\n`;
-    search.engineers.forEach((e) => {
-      response += `- ${e.name} (${e.role}, ${e.department})\n`;
-    });
-    response += "\n";
-  }
-
-  if (search.meetings.length > 0) {
-    response += `**Meetings (${search.meetings.length}):**\n`;
-    search.meetings.forEach((m) => {
-      response += `- ${m.title} [${m.type}]${m.date ? ` — ${m.date}` : ""}\n`;
-    });
-  }
-
-  return response;
-}
-
-async function explainDecisionProposal() {
-  const companyId = await getCompanyId();
-  const proposal = await prisma.decisionProposal.findFirst({
-    where: { companyId, status: "pending" },
-    include: {
-      agentInputs: { include: { agent: { select: { name: true, role: true } } } },
-    },
-  });
-
-  if (!proposal) {
-    return "No pending decision proposals requiring your approval.";
-  }
-
-  let response = `**${proposal.title}**\n${proposal.question}\n\n`;
-  response += `**Agent Analysis:**\n`;
-  proposal.agentInputs.forEach((input) => {
-    response += `\n**${input.agent.name}** (${input.agent.role})\n`;
-    response += `${input.analysis}\n`;
-    response += `→ Recommends: ${input.recommendation}\n`;
-  });
-
-  if (proposal.finalRecommendation) {
-    response += `\n**SAI Final Recommendation:**\n${proposal.finalRecommendation}`;
+  if (search.documents.length > 0) {
+    response += `**Documents:**\n`;
+    search.documents.forEach((d) => { response += `- ${d.title} [${d.type}]\n`; });
   }
 
   return response;

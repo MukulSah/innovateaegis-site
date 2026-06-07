@@ -6,27 +6,28 @@ import type { AuthSession } from "@/lib/sai/auth";
 
 const navSections = [
   {
-    title: "Command",
+    title: "Operations",
     items: [
       { label: "Dashboard", href: "/sai", icon: "◈" },
-      { label: "SAI Brain", href: "/sai/brain", icon: "◉" },
-      { label: "Company Memory", href: "/sai/memory", icon: "◎" },
+      { label: "My Workspace", href: "/sai/workspace", icon: "▤" },
+      { label: "Projects", href: "/sai/projects", icon: "▣" },
+      { label: "Tasks", href: "/sai/tasks", icon: "▥" },
     ],
   },
   {
     title: "Organization",
     items: [
-      { label: "Projects", href: "/sai/projects", icon: "▣" },
       { label: "Employees", href: "/sai/employees", icon: "◫" },
-      { label: "AI Agents", href: "/sai/agents", icon: "◇" },
+      { label: "Documents", href: "/sai/documents", icon: "▦" },
+      { label: "Knowledge", href: "/sai/memory", icon: "◎" },
+      { label: "Releases", href: "/sai/releases", icon: "▲" },
     ],
   },
   {
-    title: "Operations",
+    title: "Integrations",
     items: [
-      { label: "Tasks", href: "/sai/tasks", icon: "▤" },
-      { label: "Releases", href: "/sai/releases", icon: "▲" },
-      { label: "Analytics", href: "/sai/analytics", icon: "◆" },
+      { label: "GitHub & Notion", href: "/sai/integrations", icon: "◇" },
+      { label: "AI Agents", href: "/sai/agents", icon: "◉" },
     ],
   },
 ];

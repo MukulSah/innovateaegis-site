@@ -76,6 +76,9 @@ model User {
   activityLogs      ActivityLog[]
   agentProfile      AIAgent?
   documents         Document[]
+  taskComments      TaskComment[]
+  taskAttachments   TaskAttachment[]
+  notifications     UserNotification[]
 
   @@index([companyId])
   @@index([departmentId])
@@ -159,9 +162,12 @@ model Project {
   id          String        @id @default(cuid())
   name        String
   description String?
+  goals       String        @default("[]")
+  roadmap     String        @default("[]")
   objective   String?
   status      String        @default("on_track")
   progress    Int           @default(0)
+  ownerId     String?
   leadId      String?
   lead        User?         @relation("ProjectLead", fields: [leadId], references: [id])
   objectiveId String?
@@ -222,7 +228,8 @@ model Task {
   title              String
   description        String?
   stage              String    @default("backlog")
-  priority           Int       @default(0)
+  priority           String    @default("medium")
+  dueDate            DateTime?
   isBlocker          Boolean   @default(false)
   projectId          String
   project            Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -240,12 +247,41 @@ model Task {
   updatedAt          DateTime  @updatedAt
 
   activityLogs ActivityLog[]
+  comments     TaskComment[]
+  attachments  TaskAttachment[]
 
   @@index([projectId])
   @@index([featureId])
   @@index([assigneeId])
   @@index([agentId])
   @@index([stage])
+  @@index([dueDate])
+}
+
+model TaskComment {
+  id        String   @id @default(cuid())
+  content   String
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([taskId])
+}
+
+model TaskAttachment {
+  id        String   @id @default(cuid())
+  filename  String
+  url       String
+  mimeType  String?
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  uploadedById String
+  uploadedBy User   @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([taskId])
 }
 
 model Milestone {
@@ -407,9 +443,56 @@ model Document {
   companyId String
   company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  versions DocumentVersion[]
 
   @@index([companyId])
   @@index([projectId])
+}
+
+model DocumentVersion {
+  id         String   @id @default(cuid())
+  version    Int
+  content    String
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  authorId   String?
+  createdAt  DateTime @default(now())
+
+  @@unique([documentId, version])
+  @@index([documentId])
+}
+
+model UserNotification {
+  id        String   @id @default(cuid())
+  title     String
+  message   String
+  type      String   @default("info")
+  read      Boolean  @default(false)
+  link      String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  companyId String
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([companyId])
+}
+
+model AgentDraft {
+  id        String   @id @default(cuid())
+  agentType String
+  title     String
+  content   String
+  status    String   @default("pending_review")
+  projectId String?
+  taskId    String?
+  companyId String
+  createdAt DateTime @default(now())
+
+  @@index([companyId])
+  @@index([status])
 }
 
 model Decision {
@@ -677,17 +760,19 @@ model NotionPage {
 }
 
 model GitHubActivity {
-  id        String   @id @default(cuid())
-  repo      String
-  type      String
-  title     String
-  author    String?
-  url       String?
-  projectId String?
-  companyId String
-  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
+  id         String   @id @default(cuid())
+  externalId String?
+  repo       String
+  type       String
+  title      String
+  author     String?
+  url        String?
+  projectId  String?
+  companyId  String
+  company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  syncedAt   DateTime @default(now())
 
+  @@unique([companyId, externalId])
   @@index([companyId])
   @@index([repo])
 }

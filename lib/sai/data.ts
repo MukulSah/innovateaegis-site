@@ -307,12 +307,12 @@ export const memoryRecords: MemoryRecord[] = [
 ];
 
 export const askSAIExamples = [
-  "What should I work on today?",
-  "Why is Sentra delayed?",
-  "Show all open bugs.",
+  "What is blocking my projects?",
+  "Which objectives are overdue?",
+  "What was completed this week?",
+  "Which engineer has the highest workload?",
   "Which projects are at risk?",
-  "What did the engineering team complete this week?",
-  "Generate a roadmap for Unite.",
+  "What are the upcoming releases?",
 ];
 
 export function getSAIResponse(query: string): string {

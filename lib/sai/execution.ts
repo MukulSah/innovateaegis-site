@@ -131,7 +131,7 @@ export async function createObjectiveWithExecution(input: CreateObjectiveInput) 
             stage: stages[Math.min(i, stages.length - 1)],
             projectId: project.id,
             featureId: feature.id,
-            priority: i,
+            priority: i === 0 ? "high" : "medium",
           },
         });
         taskCount++;
