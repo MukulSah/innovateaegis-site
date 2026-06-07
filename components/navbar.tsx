@@ -31,6 +31,11 @@ export function Navbar() {
     () => pathname.startsWith("/products"),
     [pathname],
   );
+  const isSaiCompanyApp = pathname.startsWith("/sai-company");
+
+  if (isSaiCompanyApp) {
+    return null;
+  }
 
   return (
     <motion.header
@@ -128,12 +133,20 @@ export function Navbar() {
             </div>
           </nav>
 
-          <Link
-            href={isProductsActive ? "/#connect" : "#connect"}
-            className="hidden rounded-full border border-purple-400/25 bg-purple-500/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-purple-100 transition-all duration-200 hover:-translate-y-0.5 hover:border-purple-300/40 hover:bg-purple-500/20 hover:shadow-[0_0_16px_rgba(124,58,237,0.2)] md:inline-flex"
-          >
-            Connect
-          </Link>
+          <div className="hidden items-center gap-2 md:flex">
+            <Link
+              href={isProductsActive ? "/#connect" : "#connect"}
+              className="rounded-full border border-purple-400/25 bg-purple-500/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-purple-100 transition-all duration-200 hover:-translate-y-0.5 hover:border-purple-300/40 hover:bg-purple-500/20 hover:shadow-[0_0_16px_rgba(124,58,237,0.2)]"
+            >
+              Connect
+            </Link>
+            <Link
+              href="/login"
+              className="glow-btn rounded-full bg-gradient-to-r from-purple-600 to-cyan-500 px-4 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-white shadow-[0_0_18px_rgba(6,182,212,0.18)]"
+            >
+              Login
+            </Link>
+          </div>
 
           <button
             type="button"
@@ -176,6 +189,13 @@ export function Navbar() {
                   className="block text-sm text-white/80"
                 >
                   About
+                </Link>
+                <Link
+                  href="/login"
+                  onClick={() => setMobileOpen(false)}
+                  className="block rounded-lg border border-cyan-300/20 bg-cyan-400/10 px-3 py-2 text-sm font-semibold text-cyan-100"
+                >
+                  Login to SAI COMPANY
                 </Link>
               </div>
 
