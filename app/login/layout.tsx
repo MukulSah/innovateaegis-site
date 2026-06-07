@@ -1,0 +1,11 @@
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Login — SAI COMPANY",
+  description: "Enter the SAI COMPANY headquarters",
+  robots: { index: false, follow: false },
+};
+
+export default function LoginLayout({ children }: { children: React.ReactNode }) {
+  return <>{children}</>;
+}

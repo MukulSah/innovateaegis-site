@@ -491,6 +491,25 @@ body::after {
     will-change: left, top;
 }
 
+/* ── SAI Brain pulse ── */
+
+@keyframes sai-brain-pulse {
+    0%,
+    100% {
+        opacity: 0.3;
+    }
+    50% {
+        opacity: 0.6;
+    }
+}
+
+.sai-brain-pulse {
+    background: radial-gradient(ellipse at 30% 50%, rgba(124, 58, 237, 0.15), transparent 60%),
+        radial-gradient(ellipse at 70% 50%, rgba(6, 182, 212, 0.1), transparent 60%);
+    animation: sai-brain-pulse 4s ease-in-out infinite;
+}
+
+
 @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
