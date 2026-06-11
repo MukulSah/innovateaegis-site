@@ -1,36 +1,59 @@
-import { SectionPage } from "@/components/sai/section-page";
+import { CompanyBrainView } from "@/components/sai/company-brain-view";
+import { getBrainLayers, getBrainSections, getBrainStats, getMemoryRecords } from "@/lib/sai/brain";
+import { getAgents } from "@/lib/sai/agents";
+import { getCurrentUser } from "@/lib/sai/current-user.server";
+import { isFounder } from "@/lib/sai/current-user.types";
+import { isSupabaseConfigured } from "@/lib/supabase/server";
 
-const domains = [
-  "Projects", "Tasks", "Products", "Employees", "Agents",
-  "Customers", "Revenue", "Documentation", "Meetings", "Decisions",
-];
+export default async function CompanyBrainPage() {
+  const currentUser = await getCurrentUser();
+  const userIsFounder = currentUser ? isFounder(currentUser.profile) : false;
+  const configured = isSupabaseConfigured();
 
-export default function SAIBrainPage() {
+  const emptyStats = {
+    totalRecords: 0,
+    activeRecords: 0,
+    archivedRecords: 0,
+    totalRelationships: 0,
+    totalDomains: 0,
+    totalCategories: 0,
+    agentContainers: 0,
+    founderMemories: 0,
+    retrievalCount: 0,
+  };
+
+  const [layers, sections, records, stats, agents] = configured
+    ? await Promise.all([
+        getBrainLayers(),
+        getBrainSections(),
+        getMemoryRecords({ includeArchived: true, isFounder: userIsFounder }),
+        getBrainStats(),
+        getAgents(),
+      ])
+    : [[], [], [], emptyStats, []];
+
   return (
-    <SectionPage
-      title="SAI Brain"
-      subtitle="Central Intelligence"
-      description="The central intelligence of the company. Everything reports here. SAI Brain continuously evaluates whether the organization is moving closer to its goals."
-    >
-      <div className="enterprise-glass rounded-2xl border border-purple-400/15 p-6">
-        <h2 className="text-lg font-semibold text-white">Connected Domains</h2>
-        <div className="mt-4 flex flex-wrap gap-2">
-          {domains.map((domain) => (
-            <span
-              key={domain}
-              className="rounded-full border border-purple-400/20 bg-purple-500/10 px-4 py-2 text-sm text-purple-200"
-            >
-              {domain}
-            </span>
-          ))}
-        </div>
-        <p className="mt-6 text-sm leading-relaxed text-white/55">
-          SAI Brain ingests real-time data from every domain, correlates patterns across
-          projects and teams, and surfaces insights through Ask SAI on the dashboard.
-          Long-term, the brain will autonomously coordinate agent workflows and recommend
-          strategic pivots based on company memory.
+    <div className="space-y-6">
+      <header>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-purple-300/70">
+          Constitutional Knowledge System — Locked
         </p>
-      </div>
-    </SectionPage>
+        <h1 className="mt-1 text-2xl font-bold text-white md:text-3xl">Company Brain</h1>
+        <p className="mt-2 max-w-3xl text-sm leading-relaxed text-white/55">
+          Official organizational truth of InnovateAegis. Not founder notes. Not agent memory.
+          Not meeting history. Not organizational memory. Every record requires ownership and approval.
+        </p>
+      </header>
+
+      <CompanyBrainView
+        layers={layers}
+        sections={sections}
+        initialRecords={records}
+        stats={stats}
+        agents={agents}
+        isFounder={userIsFounder}
+        supabaseConfigured={configured}
+      />
+    </div>
   );
 }

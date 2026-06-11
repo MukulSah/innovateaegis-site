@@ -8,8 +8,8 @@ const statCards = [
   { key: "activeProjects", label: "Active Projects", icon: "▣" },
   { key: "employeesOnline", label: "Employees Online", icon: "◫", suffix: (d: CompanyOverview) => ` / ${d.totalEmployees}` },
   { key: "aiAgentsActive", label: "AI Agents Active", icon: "◇", suffix: (d: CompanyOverview) => ` / ${d.totalAgents}` },
-  { key: "revenue", label: "Revenue", icon: "◆", trend: (d: CompanyOverview) => d.revenueTrend },
-  { key: "releases", label: "Releases", icon: "▲" },
+  { key: "tasksInProgress", label: "Tasks In Progress", icon: "◆" },
+  { key: "releases", label: "Released Versions", icon: "▲" },
   { key: "openIssues", label: "Open Issues", icon: "!" },
 ] as const;
 
@@ -36,7 +36,6 @@ export function CompanyOverviewPanel({ data }: Props) {
           const value = data[card.key as keyof CompanyOverview];
           const displayValue = typeof value === "number" ? value : String(value);
           const suffix = "suffix" in card && card.suffix ? card.suffix(data) : "";
-          const trend = "trend" in card && card.trend ? card.trend(data) : null;
 
           return (
             <article
@@ -45,9 +44,6 @@ export function CompanyOverviewPanel({ data }: Props) {
             >
               <div className="flex items-center justify-between">
                 <span className="text-xs text-purple-300/60">{card.icon}</span>
-                {trend && (
-                  <span className="text-[10px] font-medium text-emerald-400">{trend}</span>
-                )}
               </div>
               <p className="mt-3 text-2xl font-bold text-white">
                 {displayValue}

@@ -4,26 +4,19 @@ import type {
   Employee,
   HealthMetric,
   MemoryRecord,
-  Project,
 } from "./types";
 
 export const companyOverview: CompanyOverview = {
-  activeProjects: 4,
-  employeesOnline: 7,
-  totalEmployees: 12,
-  aiAgentsActive: 14,
-  totalAgents: 15,
-  revenue: "$284,500",
-  revenueTrend: "+12.4% MoM",
-  releases: 3,
-  openIssues: 18,
-  currentObjectives: [
-    "Build Sentra Software Deployment Module",
-    "Launch FaceNova v2 Multi-Site Dashboard",
-    "Expand HYGYR Premium Tier",
-    "Unite Platform Architecture Phase 1",
-  ],
-  organizationHealthScore: 78,
+  activeProjects: 0,
+  employeesOnline: 0,
+  totalEmployees: 0,
+  aiAgentsActive: 0,
+  totalAgents: 0,
+  tasksInProgress: 0,
+  releases: 0,
+  openIssues: 0,
+  currentObjectives: [],
+  organizationHealthScore: 0,
 };
 
 export const healthMetrics: HealthMetric[] = [
@@ -223,49 +216,6 @@ export const employees: Employee[] = [
   { id: "e5", name: "Vikram Singh", role: "Sales Executive", department: "Sales", status: "offline", currentWork: "Enterprise lead follow-ups" },
   { id: "e6", name: "Ananya Reddy", role: "Marketing Lead", department: "Marketing", status: "online", currentWork: "Q2 content calendar" },
   { id: "e7", name: "Karthik Nair", role: "Software Engineer", department: "Engineering", status: "busy", currentWork: "Unite architecture review" },
-];
-
-export const projects: Project[] = [
-  {
-    id: "p1",
-    name: "Sentra Deployment Module",
-    objective: "Build automated software deployment across managed endpoints",
-    status: "delayed",
-    progress: 62,
-    lead: "Arjun Mehta",
-    tasksTotal: 34,
-    tasksCompleted: 21,
-  },
-  {
-    id: "p2",
-    name: "FaceNova v2 Dashboard",
-    objective: "Multi-site attendance dashboard with real-time analytics",
-    status: "on_track",
-    progress: 78,
-    lead: "Priya Sharma",
-    tasksTotal: 28,
-    tasksCompleted: 22,
-  },
-  {
-    id: "p3",
-    name: "HYGYR Premium Tier",
-    objective: "Launch paid tier with advanced templates and AI writing",
-    status: "on_track",
-    progress: 45,
-    lead: "Priya Sharma",
-    tasksTotal: 22,
-    tasksCompleted: 10,
-  },
-  {
-    id: "p4",
-    name: "Unite Platform",
-    objective: "Unified company operating system architecture phase 1",
-    status: "at_risk",
-    progress: 28,
-    lead: "Karthik Nair",
-    tasksTotal: 40,
-    tasksCompleted: 11,
-  },
 ];
 
 export const memoryRecords: MemoryRecord[] = [

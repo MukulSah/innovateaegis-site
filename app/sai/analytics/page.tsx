@@ -1,7 +1,34 @@
+import { OrganizationHealthPanel } from "@/components/sai/organization-health";
 import { SectionPage } from "@/components/sai/section-page";
-import { companyOverview, healthMetrics } from "@/lib/sai/data";
+import { getDashboardMetrics } from "@/lib/sai/metrics";
+import { isSupabaseConfigured } from "@/lib/supabase/server";
 
-export default function AnalyticsPage() {
+export default async function AnalyticsPage() {
+  let overview = {
+    organizationHealthScore: 0,
+    activeProjects: 0,
+    tasksInProgress: 0,
+    releases: 0,
+    openIssues: 0,
+  };
+  let healthMetrics: Awaited<ReturnType<typeof getDashboardMetrics>>["healthMetrics"] = [];
+
+  if (isSupabaseConfigured()) {
+    try {
+      const metrics = await getDashboardMetrics();
+      overview = {
+        organizationHealthScore: metrics.overview.organizationHealthScore,
+        activeProjects: metrics.overview.activeProjects,
+        tasksInProgress: metrics.overview.tasksInProgress,
+        releases: metrics.overview.releases,
+        openIssues: metrics.overview.openIssues,
+      };
+      healthMetrics = metrics.healthMetrics;
+    } catch {
+      // keep zeroed metrics
+    }
+  }
+
   return (
     <SectionPage
       title="Analytics"
@@ -10,44 +37,25 @@ export default function AnalyticsPage() {
     >
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div className="enterprise-glass rounded-xl border border-white/10 p-5 text-center">
-          <p className="text-3xl font-bold text-white">{companyOverview.organizationHealthScore}</p>
+          <p className="text-3xl font-bold text-white">{overview.organizationHealthScore}</p>
           <p className="mt-1 text-xs text-white/50">Health Score</p>
         </div>
         <div className="enterprise-glass rounded-xl border border-white/10 p-5 text-center">
-          <p className="text-3xl font-bold text-white">{companyOverview.revenue}</p>
-          <p className="mt-1 text-xs text-emerald-400">{companyOverview.revenueTrend}</p>
+          <p className="text-3xl font-bold text-white">{overview.tasksInProgress}</p>
+          <p className="mt-1 text-xs text-white/50">Tasks In Progress</p>
         </div>
         <div className="enterprise-glass rounded-xl border border-white/10 p-5 text-center">
-          <p className="text-3xl font-bold text-white">{companyOverview.activeProjects}</p>
+          <p className="text-3xl font-bold text-white">{overview.activeProjects}</p>
           <p className="mt-1 text-xs text-white/50">Active Projects</p>
         </div>
         <div className="enterprise-glass rounded-xl border border-white/10 p-5 text-center">
-          <p className="text-3xl font-bold text-white">{companyOverview.openIssues}</p>
-          <p className="mt-1 text-xs text-white/50">Open Issues</p>
+          <p className="text-3xl font-bold text-white">{overview.releases}</p>
+          <p className="mt-1 text-xs text-white/50">Released Versions</p>
         </div>
       </div>
 
-      <div className="mt-6 grid gap-3 md:grid-cols-2">
-        {healthMetrics.map((metric) => (
-          <div
-            key={metric.id}
-            className="enterprise-glass rounded-xl border border-white/10 p-4"
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-white">{metric.label}</span>
-              <span className="text-lg font-bold text-white">{metric.score}</span>
-            </div>
-            <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/10">
-              <div
-                className={`h-full rounded-full ${
-                  metric.status === "green" ? "bg-emerald-400" :
-                  metric.status === "yellow" ? "bg-amber-400" : "bg-red-400"
-                }`}
-                style={{ width: `${metric.score}%` }}
-              />
-            </div>
-          </div>
-        ))}
+      <div className="mt-6">
+        <OrganizationHealthPanel metrics={healthMetrics} />
       </div>
     </SectionPage>
   );
