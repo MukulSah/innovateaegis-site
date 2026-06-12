@@ -53,6 +53,7 @@ async function openAICompatibleCompletion(
   const response = await fetch(url, {
     method: "POST",
     headers,
+    signal: AbortSignal.timeout(45_000),
     body: JSON.stringify({
       model: req.model,
       messages: [
@@ -94,6 +95,7 @@ async function anthropicCompletion(req: AICompletionRequest): Promise<AICompleti
       "x-api-key": req.apiKey,
       "anthropic-version": "2023-06-01",
     },
+    signal: AbortSignal.timeout(45_000),
     body: JSON.stringify({
       model: req.model,
       max_tokens: req.maxTokens ?? 4096,
@@ -131,6 +133,7 @@ async function geminiCompletion(req: AICompletionRequest): Promise<AICompletionR
   const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    signal: AbortSignal.timeout(45_000),
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: req.systemPrompt }] },
       contents: [{ role: "user", parts: [{ text: req.userPrompt }] }],
@@ -170,6 +173,7 @@ async function huggingFaceCompletion(req: AICompletionRequest): Promise<AIComple
       Authorization: `Bearer ${req.apiKey}`,
       "Content-Type": "application/json",
     },
+    signal: AbortSignal.timeout(45_000),
     body: JSON.stringify({
       inputs: `${req.systemPrompt}\n\n${req.userPrompt}`,
       parameters: { max_new_tokens: req.maxTokens ?? 1024, temperature: req.temperature ?? 0.7 },

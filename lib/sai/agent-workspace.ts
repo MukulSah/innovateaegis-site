@@ -1,6 +1,7 @@
 import { createSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase/server";
 import { getAgentAIConfig } from "./agent-ai-config";
 import { getAgentHandoffs } from "./agent-handoffs";
+import { getAgentSessionHandoffs } from "./coo-routing";
 import { getWorkflowConversations } from "./agent-conversations";
 import { getAgentRuntimeSessions } from "./agent-runtime";
 import { getActivityFeedByActor } from "./activity-feed";
@@ -53,6 +54,7 @@ export async function getAgentWorkspace(agentId: string): Promise<AgentWorkspace
       runtimeSessions: [],
       conversations: [],
       handoffs: [],
+      sessionHandoffs: [],
       aiConfig: null,
       workload: await computeAgentWorkload(agent),
       metrics: null,
@@ -80,7 +82,7 @@ export async function getAgentWorkspace(agentId: string): Promise<AgentWorkspace
   const allTasks = await getTasks();
   const assignedTasks = allTasks.filter((t) => t.assignedAgentId === agentId);
 
-  const [allApprovals, allDocuments, memories, allDecisions, metricsList, discussions, runtimeSessions, aiConfig, handoffs] =
+  const [allApprovals, allDocuments, memories, allDecisions, metricsList, discussions, runtimeSessions, aiConfig, handoffs, sessionHandoffs] =
     await Promise.all([
       getWorkflowApprovals(),
       getDocuments(),
@@ -91,6 +93,7 @@ export async function getAgentWorkspace(agentId: string): Promise<AgentWorkspace
       getAgentRuntimeSessions(agentId, 10),
       getAgentAIConfig(agentId),
       getAgentHandoffs(agentId, 10),
+      getAgentSessionHandoffs(agentId, 20),
     ]);
 
   const pendingApprovals = allApprovals.filter(
@@ -129,6 +132,7 @@ export async function getAgentWorkspace(agentId: string): Promise<AgentWorkspace
     runtimeSessions,
     conversations,
     handoffs,
+    sessionHandoffs,
     aiConfig,
     workload,
     metrics,

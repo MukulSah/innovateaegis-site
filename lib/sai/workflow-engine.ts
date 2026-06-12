@@ -156,10 +156,9 @@ type BootstrapContext = {
 
 const STEP_APPROVAL_TYPE: Record<string, ApprovalType> = {
   requirements: "requirements",
+  execution_readiness: "execution_readiness",
   design: "architecture",
-  tasks: "milestones",
-  assignment: "task_plan",
-  documentation: "document",
+  tasks: "task_plan",
   deployment: "release",
 };
 

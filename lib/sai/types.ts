@@ -95,16 +95,51 @@ export type GovernanceStatus =
   | "escalated";
 
 export type ApprovalType =
+  | "strategic_objective"
   | "requirements"
   | "architecture"
   | "milestones"
   | "task_plan"
+  | "execution_readiness"
   | "release"
   | "document"
   | "decision"
   | "security"
   | "infrastructure"
   | "database_change";
+
+export type SessionStatus =
+  | "pending_ceo"
+  | "pending_founder"
+  | "pending_coo"
+  | "planning"
+  | "running"
+  | "executing"
+  | "waiting_approval"
+  | "blocked"
+  | "stalled"
+  | "recovery"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+export type SessionCloseRequestStatus =
+  | "pending_ceo"
+  | "pending_coo"
+  | "pending_founder"
+  | "approved"
+  | "rejected";
+
+export type SessionCloseRequest = {
+  id: string;
+  workflowRunId: string;
+  reason: string;
+  recommendation: string;
+  status: SessionCloseRequestStatus;
+  requestedBy: string | null;
+  createdAt: string;
+  resolvedAt: string | null;
+};
 
 export type ApprovalMode = "manual" | "auto" | "conditional" | "escalated";
 
@@ -340,6 +375,7 @@ export interface AgentWorkspace {
   runtimeSessions: AgentRuntimeSession[];
   conversations: AgentConversation[];
   handoffs: AgentHandoff[];
+  sessionHandoffs: SessionHandoff[];
   aiConfig: AgentAIConfig | null;
   workload: AgentWorkload;
   metrics: AgentMetrics | null;
@@ -431,8 +467,21 @@ export interface CompanyAISettings {
   modelMode: AIModelMode;
   defaultProviderId: string | null;
   defaultProviderName?: string | null;
+  fallbackProviderId?: string | null;
+  fallbackProviderName?: string | null;
   updatedAt: string;
 }
+
+export type AIReliabilityStatus = {
+  provider: string;
+  providerLabel: string;
+  successRate: number;
+  retries: number;
+  fallbackUsage: number;
+  templateMode: number;
+  totalExecutions: number;
+  operationalAlert: boolean;
+};
 
 export interface AgentAIConfig {
   agentId: string;
@@ -504,6 +553,32 @@ export interface AgentHandoff {
   openRisks: string;
   pendingQuestions: string;
   approvalStatus: string;
+  createdAt: string;
+}
+
+export interface SessionHandoff {
+  id: string;
+  workflowRunId: string;
+  artifactId: string | null;
+  artifactName: string | null;
+  completedByAgentId: string | null;
+  assignedToAgentId: string | null;
+  assignedByAgentId: string | null;
+  fromStepKey: string | null;
+  toStepKey: string | null;
+  reason: string;
+  status: "pending" | "accepted" | "completed" | "rejected";
+  createdAt: string;
+}
+
+export interface SessionEscalation {
+  id: string;
+  workflowRunId: string;
+  issue: string;
+  owner: string;
+  priority: "low" | "medium" | "high" | "critical";
+  status: "open" | "resolved" | "dismissed";
+  createdByAgentId: string | null;
   createdAt: string;
 }
 
@@ -822,8 +897,9 @@ export interface ProjectObjective {
   projectId: string;
   title: string;
   description: string;
-  status: "active" | "completed" | "cancelled";
+  status: "pending_ceo" | "pending_founder" | "active" | "completed" | "cancelled";
   workflowRunId: string | null;
+  strategicBrief: Record<string, unknown>;
   createdAt: string;
   completedAt: string | null;
 }
@@ -896,6 +972,24 @@ export interface TaskHistoryEntry {
   createdAt: string;
 }
 
+export type ProjectExecutiveSummary = {
+  currentSessionId: string | null;
+  currentSessionNumber: number | null;
+  currentAgentName: string | null;
+  nextAgentName: string | null;
+  currentDeliverable: string | null;
+  currentArtifact: string | null;
+  executionHealth: number;
+  strategicHealth: number;
+  openRisks: number;
+  pendingApprovals: number;
+  executiveSponsorName: string | null;
+  sessionOwnerName: string | null;
+  recentArtifacts: { id: string; name: string; stepKey: string; createdAt: string }[];
+  recentDecisions: { id: string; title: string; createdAt: string }[];
+  resourcesCount: number;
+};
+
 export interface ProjectDashboard {
   project: Project;
   objectives: ProjectObjective[];
@@ -905,6 +999,7 @@ export interface ProjectDashboard {
   memory: ProjectMemoryEntry[];
   deliverables: ProjectDeliverable[];
   approvals: ProjectApproval[];
+  executive: ProjectExecutiveSummary | null;
   metrics: {
     activeTasks: number;
     blockedTasks: number;
@@ -968,10 +1063,78 @@ export interface WorkflowRun {
   workflowMode?: WorkflowMode;
   governanceStatus?: GovernanceStatus;
   currentStepIndex: number;
+  sessionNumber: number | null;
+  executiveSponsorAgentId: string | null;
+  sessionOwnerAgentId: string | null;
+  executiveSponsorName?: string | null;
+  sessionOwnerName?: string | null;
+  currentStage: string | null;
+  sessionStatus: SessionStatus;
+  currentAgentId?: string | null;
+  currentAgentName?: string | null;
+  nextAgentId?: string | null;
+  nextAgentName?: string | null;
+  currentArtifactId?: string | null;
+  currentArtifact?: string | null;
+  currentDeliverable?: string | null;
+  workflowStage?: string | null;
+  executionHealth?: number | null;
+  strategicHealth?: number | null;
+  executionReleasedAt?: string | null;
+  strategicBrief: Record<string, unknown>;
   steps: WorkflowRunStep[];
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
+}
+
+export interface SessionArtifactView {
+  id: string;
+  stepKey: string;
+  turnNumber: number;
+  agentName?: string;
+  artifactName: string | null;
+  outputSummary: string;
+  createdAt: string;
+}
+
+export interface ExecutionCenterSession {
+  workflow: WorkflowRun;
+  orchestrationStatus: string | null;
+  progressPercent: number;
+  tasksComplete: number;
+  tasksTotal: number;
+  pendingApprovals: number;
+  openRisks: number;
+  currentAgentName: string | null;
+  nextAgentName: string | null;
+  timeline: SessionArtifactView[];
+  agentFeed: import("./agent-feed").AgentFeedItem[];
+}
+
+export interface ExecutionCenterData {
+  engineStatus: {
+    orchestrator: string;
+    workflowEngine: string;
+    sessionManager: string;
+    contextEngine: string;
+  };
+  activeSessions: ExecutionCenterSession[];
+  stats: {
+    activeWorkflows: number;
+    blockedTasks: number;
+    approvalsPending: number;
+  };
+}
+
+export interface IntegrationAccount {
+  id: string;
+  provider: "github" | "google_drive";
+  accountLabel: string;
+  accountIdentifier: string;
+  status: string;
+  scopes: string[];
+  createdAt: string;
 }
 
 export interface ApprovalPolicy {
@@ -987,7 +1150,7 @@ export interface ApprovalPolicy {
 
 export interface WorkflowApproval {
   id: string;
-  workflowId: string;
+  workflowId: string | null;
   workflowStepId: string | null;
   projectId: string;
   projectName?: string | null;

@@ -1,4 +1,5 @@
 import { createSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase/admin";
+import { nullableUuid } from "./nullable-uuid";
 import { syncAgentGroupMembers } from "./agent-groups";
 import { addAgentMemory, findAgentForRole, getAgents } from "./agents";
 import { countDecisions } from "./decisions";
@@ -48,10 +49,27 @@ type WorkflowRunRow = {
   workflow_mode?: string;
   governance_status?: string;
   current_step_index: number;
+  session_number?: number | null;
+  executive_sponsor_agent_id?: string | null;
+  session_owner_agent_id?: string | null;
+  current_stage?: string | null;
+  session_status?: string | null;
+  current_agent_id?: string | null;
+  next_agent_id?: string | null;
+  current_artifact_id?: string | null;
+  current_artifact?: string | null;
+  current_deliverable?: string | null;
+  workflow_stage?: string | null;
+  execution_health?: number | null;
+  strategic_health?: number | null;
+  execution_released_at?: string | null;
+  strategic_brief?: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
   completed_at: string | null;
   projects?: { name: string } | null;
+  executive_sponsor?: { name: string } | null;
+  session_owner?: { name: string } | null;
 };
 
 type WorkflowStepRow = {
@@ -98,6 +116,25 @@ async function loadWorkflowSteps(runId: string): Promise<WorkflowRunStep[]> {
 
 async function mapRun(row: WorkflowRunRow): Promise<WorkflowRun> {
   const steps = await loadWorkflowSteps(row.id);
+  const supabase = createSupabaseAdmin();
+  const agentIds = [
+    row.executive_sponsor_agent_id,
+    row.session_owner_agent_id,
+    row.current_agent_id,
+    row.next_agent_id,
+  ].filter(Boolean) as string[];
+  let sponsorName = row.executive_sponsor?.name ?? null;
+  let ownerName = row.session_owner?.name ?? null;
+  let currentAgentName: string | null = null;
+  let nextAgentName: string | null = null;
+  if (agentIds.length) {
+    const { data: agentRows } = await supabase.from("agents").select("id, name").in("id", agentIds);
+    const nameMap = new Map((agentRows ?? []).map((a) => [a.id, a.name]));
+    sponsorName = sponsorName ?? (row.executive_sponsor_agent_id ? nameMap.get(row.executive_sponsor_agent_id) ?? null : null);
+    ownerName = ownerName ?? (row.session_owner_agent_id ? nameMap.get(row.session_owner_agent_id) ?? null : null);
+    currentAgentName = row.current_agent_id ? nameMap.get(row.current_agent_id) ?? null : null;
+    nextAgentName = row.next_agent_id ? nameMap.get(row.next_agent_id) ?? null : null;
+  }
   return {
     id: row.id,
     projectId: row.project_id,
@@ -109,6 +146,25 @@ async function mapRun(row: WorkflowRunRow): Promise<WorkflowRun> {
     workflowMode: row.workflow_mode as WorkflowRun["workflowMode"],
     governanceStatus: row.governance_status as WorkflowRun["governanceStatus"],
     currentStepIndex: row.current_step_index,
+    sessionNumber: row.session_number ?? null,
+    executiveSponsorAgentId: row.executive_sponsor_agent_id ?? null,
+    sessionOwnerAgentId: row.session_owner_agent_id ?? null,
+    executiveSponsorName: sponsorName,
+    sessionOwnerName: ownerName,
+    currentStage: row.current_stage ?? null,
+    sessionStatus: (row.session_status as WorkflowRun["sessionStatus"]) ?? "running",
+    currentAgentId: row.current_agent_id ?? null,
+    currentAgentName,
+    nextAgentId: row.next_agent_id ?? null,
+    nextAgentName,
+    currentArtifactId: row.current_artifact_id ?? null,
+    currentArtifact: row.current_artifact ?? null,
+    currentDeliverable: row.current_deliverable ?? null,
+    workflowStage: row.workflow_stage ?? null,
+    executionHealth: row.execution_health ?? null,
+    strategicHealth: row.strategic_health ?? null,
+    executionReleasedAt: row.execution_released_at ?? null,
+    strategicBrief: row.strategic_brief ?? {},
     steps,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -209,27 +265,39 @@ export async function launchWorkflow(
   const projectName = projectRow.data?.name ?? "Project";
 
   const actorName = actor?.name ?? "SAI";
+  const { getNextSessionNumber, resolveExecutiveAgents } = await import("./session-manager");
+  const [sessionNumber, executives] = await Promise.all([
+    getNextSessionNumber(projectId),
+    resolveExecutiveAgents(),
+  ]);
   const objectiveRecord = await createProjectObjective(
     projectId,
     objective,
     objective,
     null,
-    actor?.userId ?? null,
+    nullableUuid(actor?.userId),
   );
   const { workflowMode } = await getProjectGovernance(projectId);
+
+  const coo = findAgentForRole(agents, ["COO", "Chief Operating"]);
 
   const { data: run, error: runError } = await supabase
     .from("workflow_runs")
     .insert({
       project_id: projectId,
-      name: workflowName,
+      name: `Session #${sessionNumber}`,
       objective,
       owner: actorName,
       status: "running",
       workflow_mode: workflowMode,
       governance_status: "normal",
       current_step_index: 0,
-      created_by: actor?.userId ?? null,
+      session_number: sessionNumber,
+      executive_sponsor_agent_id: executives.ceo?.id ?? null,
+      session_owner_agent_id: coo?.id ?? null,
+      current_stage: SDLC_WORKFLOW[0]?.label ?? "Requirements",
+      session_status: "running",
+      created_by: nullableUuid(actor?.userId),
     })
     .select("*, projects(name)")
     .single();

@@ -1,9 +1,14 @@
 import { createSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase/server";
+import { getDecisions } from "./decisions";
 import { getProjectObjectives } from "./project-objectives";
 import { getProjectMemory } from "./project-memory";
+import { getProjectResources } from "./project-resources";
 import { getProjectTimeline } from "./project-timeline";
 import { getProjectById } from "./projects";
+import { getSessionArtifacts } from "./session-artifacts";
+import { getSessionStateView } from "./session-state-view";
 import { getTasksByProject } from "./tasks";
+import { getWorkflowApprovals } from "./governance";
 import { getWorkflowRunsByProject } from "./workflows";
 import type { ProjectApproval, ProjectDashboard, ProjectDeliverable } from "./types";
 
@@ -59,7 +64,7 @@ export async function getProjectDashboard(projectId: string): Promise<ProjectDas
   const project = await getProjectById(projectId);
   if (!project) return null;
 
-  const [objectives, tasks, workflows, timeline, memory, deliverables, approvals] =
+  const [objectives, tasks, workflows, timeline, memory, deliverables, approvals, resources] =
     await Promise.all([
       getProjectObjectives(projectId),
       getTasksByProject(projectId),
@@ -68,11 +73,51 @@ export async function getProjectDashboard(projectId: string): Promise<ProjectDas
       getProjectMemory(projectId),
       getProjectDeliverables(projectId),
       getProjectApprovals(projectId),
+      getProjectResources(projectId),
     ]);
 
-  const activeTasks = tasks.filter((t) =>
-    !["released", "archived"].includes(t.status),
-  ).length;
+  const activeWorkflow =
+    workflows.find((w) => w.status === "running") ??
+    workflows.find((w) => ["executing", "running", "planning", "waiting_approval"].includes(w.sessionStatus));
+
+  let executive: ProjectDashboard["executive"] = null;
+  if (activeWorkflow) {
+    const [state, artifacts, wfApprovals, decisions] = await Promise.all([
+      getSessionStateView(activeWorkflow.id),
+      getSessionArtifacts(activeWorkflow.id),
+      getWorkflowApprovals({ workflowId: activeWorkflow.id, status: "pending" }),
+      getDecisions({ projectId }),
+    ]);
+
+    executive = {
+      currentSessionId: activeWorkflow.id,
+      currentSessionNumber: state?.sessionNumber ?? activeWorkflow.sessionNumber,
+      currentAgentName: state?.currentAgentName ?? null,
+      nextAgentName: state?.nextAgentName ?? null,
+      currentDeliverable: state?.currentDeliverable ?? null,
+      currentArtifact: state?.currentArtifact ?? null,
+      executionHealth: state?.executionHealth ?? 0,
+      strategicHealth: state?.strategicHealth ?? 0,
+      openRisks: wfApprovals.filter((a) => a.priority === "critical").length,
+      pendingApprovals: wfApprovals.length,
+      executiveSponsorName: state?.executiveSponsorName ?? activeWorkflow.executiveSponsorName ?? null,
+      sessionOwnerName: state?.sessionOwnerName ?? activeWorkflow.sessionOwnerName ?? null,
+      recentArtifacts: artifacts.slice(0, 6).map((a) => ({
+        id: a.id,
+        name: a.artifactName ?? a.stepKey,
+        stepKey: a.stepKey,
+        createdAt: a.createdAt,
+      })),
+      recentDecisions: decisions.slice(0, 5).map((d) => ({
+        id: d.id,
+        title: d.title,
+        createdAt: d.createdAt,
+      })),
+      resourcesCount: resources.length,
+    };
+  }
+
+  const activeTasks = tasks.filter((t) => !["released", "archived"].includes(t.status)).length;
   const blockedTasks = tasks.filter(
     (t) => t.approvalStatus === "rejected" || t.status === "backlog",
   ).length;
@@ -88,6 +133,7 @@ export async function getProjectDashboard(projectId: string): Promise<ProjectDas
     memory,
     deliverables,
     approvals,
+    executive,
     metrics: {
       activeTasks,
       blockedTasks,

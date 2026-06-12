@@ -144,6 +144,13 @@ export async function createProject(
     entityId: project.id,
   });
 
+  try {
+    const { bootstrapProjectInfrastructure } = await import("./project-bootstrap");
+    await bootstrapProjectInfrastructure(project.id, project.name);
+  } catch {
+    // Infrastructure bootstrap is best-effort at creation
+  }
+
   return project;
 }
 

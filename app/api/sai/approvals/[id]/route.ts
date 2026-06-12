@@ -50,6 +50,7 @@ export async function PATCH(request: Request, { params }: Ctx) {
       displayName(user.profile),
       comments,
       force,
+      user.user.id,
     );
     for (const path of ["/sai/approvals", "/sai/control", "/sai", `/sai/approvals/${id}`]) {
       revalidatePath(path);
@@ -57,6 +58,17 @@ export async function PATCH(request: Request, { params }: Ctx) {
     if (approval.workflowId) revalidatePath(`/sai/workflows/${approval.workflowId}`);
     return NextResponse.json({ approval });
   } catch (error) {
+    const { ApprovalActivationError } = await import("@/lib/sai/approval-trail");
+    if (error instanceof ApprovalActivationError) {
+      return NextResponse.json(
+        {
+          error: error.message,
+          trailId: error.trailId,
+          steps: error.steps,
+        },
+        { status: 500 },
+      );
+    }
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to process approval" },
       { status: 500 },

@@ -392,9 +392,10 @@ export function AgentsView({
             </div>
             <Link
               href={`/sai/agents/${agent.id}/workspace`}
+              title="Agent Inbox & Workspace"
               className="mt-3 inline-block text-[10px] font-medium text-purple-300 hover:text-purple-200"
             >
-              Open Workspace →
+              Inbox & Workspace →
             </Link>
             {isAdmin && supabaseConfigured && (
               <div className="mt-3 flex flex-wrap gap-2">

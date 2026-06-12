@@ -3,10 +3,14 @@ import { executeAgentWork } from "./agent-executor";
 import { getDefaultAIProvider } from "./ai-providers";
 import { sendAgentMessage } from "./agent-conversations";
 import { findAgentForRole, getAgents } from "./agents";
-import { getProjectGovernance } from "./governance";
+import { getProjectGovernance, getWorkflowApprovals, processApprovalDecision } from "./governance";
+import { getStepGovernanceApproval } from "./sdlc";
+import { routeAfterStepComplete } from "./coo-routing";
+import { closeSession, updateSessionFields } from "./session-manager";
 import { recordActivityFeed } from "./activity-feed";
 import { notifyFounder } from "./notifications";
-import { SDLC_WORKFLOW } from "./sdlc";
+import { getPrimarySdlcChain, SDLC_WORKFLOW } from "./sdlc";
+import { updateSessionStatePointers } from "./session-state-view";
 import type { OrchestrationRun, OrchestrationStatus, WorkflowMode } from "./types";
 
 type OrchestrationRow = {
@@ -122,8 +126,14 @@ export async function advanceOrchestration(
     .order("step_order");
 
   const stepRows = steps ?? [];
-  const currentStep = stepRows.find((s) => s.status === "in_progress")
-    ?? stepRows.find((s) => s.status === "pending");
+  const passiveKeys = new Set(SDLC_WORKFLOW.filter((s) => s.passiveOnly).map((s) => s.key));
+  const primaryKeys = new Set(getPrimarySdlcChain().map((s) => s.key));
+
+  const currentStep =
+    stepRows.find((s) => s.status === "in_progress" && primaryKeys.has(s.step_key as string)) ??
+    stepRows.find((s) => s.status === "in_progress" && !passiveKeys.has(s.step_key as string)) ??
+    stepRows.find((s) => s.status === "pending" && primaryKeys.has(s.step_key as string)) ??
+    stepRows.find((s) => s.status === "pending" && !passiveKeys.has(s.step_key as string));
 
   if (!currentStep) {
     await supabase
@@ -134,6 +144,20 @@ export async function advanceOrchestration(
   }
 
   const stepKey = currentStep.step_key as string;
+
+  if (stepKey === "design") {
+    const { canStartArchitecture } = await import("./requirements-engine");
+    const gate = await canStartArchitecture(workflowId, projectId);
+    if (!gate.allowed) {
+      await supabase
+        .from("orchestration_runs")
+        .update({ status: "WAITING", current_step_key: "requirements" })
+        .eq("workflow_id", workflowId);
+      await updateSessionFields(workflowId, { sessionStatus: "waiting_approval" });
+      return;
+    }
+  }
+
   const sdlcStep = SDLC_WORKFLOW.find((s) => s.key === stepKey);
   const agentId = currentStep.assigned_agent_id as string | null;
   const agent = agentId ? agents.find((a) => a.id === agentId) : findAgentForRole(agents, sdlcStep?.matchRoles ?? []);
@@ -162,6 +186,14 @@ export async function advanceOrchestration(
     })
     .eq("workflow_id", workflowId);
 
+  await updateSessionStatePointers({
+    sessionId: workflowId,
+    currentAgentId: agent.id,
+    nextAgentId: nextAgent?.id ?? null,
+    workflowStage: stepKey,
+    currentStage: sdlcStep?.label ?? stepKey,
+  });
+
   const { data: taskRow } = await supabase
     .from("tasks")
     .select("id")
@@ -179,7 +211,7 @@ export async function advanceOrchestration(
     });
   }
 
-  try {
+    try {
     await executeAgentWork(agent.id, {
       workflowId,
       projectId,
@@ -194,6 +226,102 @@ export async function advanceOrchestration(
       .from("workflow_run_steps")
       .update({ status: "completed", completed_at: new Date().toISOString() })
       .eq("id", currentStep.id);
+
+    try {
+      const { touchSessionActivity } = await import("./session-manager");
+      await touchSessionActivity(workflowId);
+    } catch {
+      // Activity tracking is best-effort
+    }
+
+    try {
+      const { postAgentSessionMessage } = await import("./executive-session-chat");
+      const stepLabel = sdlcStep?.label ?? stepKey;
+      await postAgentSessionMessage(
+        agent,
+        workflowId,
+        `${stepLabel} completed.`,
+        { projectId, stepKey, artifactName: `${stepKey}_v1` },
+      );
+    } catch {
+      // Session chat is best-effort
+    }
+
+    const { data: sessionRow } = await supabase
+      .from("workflow_runs")
+      .select("session_owner_agent_id")
+      .eq("id", workflowId)
+      .maybeSingle();
+    const cooId = sessionRow?.session_owner_agent_id as string | null;
+    if (cooId && stepKey !== "coo_execution" && stepKey !== "ceo_strategy") {
+      const { data: artifact } = await supabase
+        .from("session_artifacts")
+        .select("id, artifact_name")
+        .eq("workflow_run_id", workflowId)
+        .eq("step_key", stepKey)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      try {
+        await routeAfterStepComplete({
+          sessionId: workflowId,
+          completedStepKey: stepKey,
+          artifactId: artifact?.id ?? null,
+          artifactName: artifact?.artifact_name ?? `${stepKey}_v1`,
+          completedByAgentId: agent.id,
+          cooAgentId: cooId,
+        });
+      } catch {
+        // COO routing is best-effort; orchestration continues
+      }
+    }
+
+    try {
+      const { runCeoSessionMonitor } = await import("./ceo-monitor");
+      await runCeoSessionMonitor(workflowId, { event: `step_completed:${stepKey}` });
+    } catch {
+      // CEO monitoring is best-effort
+    }
+
+    const approvalType = getStepGovernanceApproval(stepKey);
+    const pendingApprovals = approvalType
+      ? await getWorkflowApprovals({ workflowId, status: "pending" })
+      : [];
+    const stepApproval = pendingApprovals.find((a) => a.approvalType === approvalType);
+    const stepApprovalPending = Boolean(stepApproval);
+
+    if (stepApprovalPending && stepApproval) {
+      if (approvalType === "task_plan") {
+        const coo = findAgentForRole(agents, ["COO", "Chief Operating"]);
+        if (coo) {
+          await processApprovalDecision(stepApproval.id, "approved", coo.name, "COO approved task plan");
+        }
+      } else if (approvalType === "execution_readiness") {
+        const orchestrator = findAgentForRole(agents, ["Work Routing", "Orchestrator"]);
+        if (orchestrator) {
+          await processApprovalDecision(
+            stepApproval.id,
+            "approved",
+            orchestrator.name,
+            "Coordination escalation resolved",
+          );
+        }
+      } else if (approvalType === "requirements") {
+        await supabase
+          .from("orchestration_runs")
+          .update({ status: "WAITING", current_agent_id: agent.id })
+          .eq("workflow_id", workflowId);
+        await updateSessionFields(workflowId, { sessionStatus: "waiting_approval" });
+        return;
+      } else {
+        await supabase
+          .from("orchestration_runs")
+          .update({ status: "WAITING", current_agent_id: agent.id })
+          .eq("workflow_id", workflowId);
+        await updateSessionFields(workflowId, { sessionStatus: "waiting_approval" });
+        return;
+      }
+    }
 
     if (nextStep) {
       await supabase
@@ -215,9 +343,11 @@ export async function advanceOrchestration(
         .update({ status: "COMPLETED", completed_at: new Date().toISOString() })
         .eq("workflow_id", workflowId);
 
+      await closeSession(workflowId, projectId);
+
       await notifyFounder(
         `Orchestration complete: ${objective}`,
-        "All agent steps executed",
+        "All agent steps executed — session closed, project memory updated",
         "WORKFLOW",
         { severity: "MEDIUM", entityType: "workflow", entityId: workflowId },
       );

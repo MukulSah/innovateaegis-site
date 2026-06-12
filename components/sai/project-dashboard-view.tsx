@@ -12,7 +12,7 @@ type Props = {
 
 export function ProjectDashboardView({ dashboard, isAdmin }: Props) {
   const router = useRouter();
-  const { project, objectives, tasks, workflows, timeline, memory, deliverables, approvals, metrics } =
+  const { project, objectives, tasks, workflows, timeline, memory, deliverables, approvals, executive, metrics } =
     dashboard;
   const [objective, setObjective] = useState("");
   const [loading, setLoading] = useState(false);
@@ -116,6 +116,77 @@ export function ProjectDashboardView({ dashboard, isAdmin }: Props) {
           </article>
         ))}
       </div>
+
+      {executive && (
+        <section className="enterprise-glass rounded-xl border border-cyan-400/20 p-5">
+          <header className="border-b border-white/10 pb-4">
+            <p className="text-[10px] uppercase tracking-wider text-cyan-300/80">Executive View</p>
+            <h3 className="mt-1 text-lg font-semibold text-white">
+              Session #{executive.currentSessionNumber ?? "—"}
+            </h3>
+          </header>
+          <dl className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-lg bg-white/[0.04] p-3">
+              <dt className="text-[10px] text-white/40">Current Agent</dt>
+              <dd className="text-sm font-medium text-white">{executive.currentAgentName ?? "—"}</dd>
+            </div>
+            <div className="rounded-lg bg-white/[0.04] p-3">
+              <dt className="text-[10px] text-white/40">Next Agent</dt>
+              <dd className="text-sm font-medium text-white">{executive.nextAgentName ?? "—"}</dd>
+            </div>
+            <div className="rounded-lg bg-white/[0.04] p-3">
+              <dt className="text-[10px] text-white/40">Current Deliverable</dt>
+              <dd className="font-mono text-sm text-purple-300">{executive.currentDeliverable ?? "—"}</dd>
+            </div>
+            <div className="rounded-lg bg-white/[0.04] p-3">
+              <dt className="text-[10px] text-white/40">Current Artifact</dt>
+              <dd className="font-mono text-sm text-cyan-300">{executive.currentArtifact ?? "—"}</dd>
+            </div>
+            <div className="rounded-lg bg-white/[0.04] p-3">
+              <dt className="text-[10px] text-white/40">Execution Health</dt>
+              <dd className="text-sm font-medium text-white">{executive.executionHealth}%</dd>
+            </div>
+            <div className="rounded-lg bg-white/[0.04] p-3">
+              <dt className="text-[10px] text-white/40">Strategic Health</dt>
+              <dd className="text-sm font-medium text-white">{executive.strategicHealth}%</dd>
+            </div>
+            <div className="rounded-lg bg-white/[0.04] p-3">
+              <dt className="text-[10px] text-white/40">Executive Sponsor</dt>
+              <dd className="text-sm text-white/80">{executive.executiveSponsorName ?? "—"}</dd>
+            </div>
+            <div className="rounded-lg bg-white/[0.04] p-3">
+              <dt className="text-[10px] text-white/40">Session Owner (COO)</dt>
+              <dd className="text-sm text-white/80">{executive.sessionOwnerName ?? "—"}</dd>
+            </div>
+          </dl>
+          <div className="mt-4 grid gap-4 lg:grid-cols-2">
+            <div>
+              <p className="text-[10px] uppercase text-white/40">Recent Artifacts</p>
+              <ul className="mt-2 space-y-1 text-xs text-white/70">
+                {executive.recentArtifacts.map((a) => (
+                  <li key={a.id}>{a.name} · {a.stepKey}</li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase text-white/40">Recent Decisions</p>
+              <ul className="mt-2 space-y-1 text-xs text-white/70">
+                {executive.recentDecisions.map((d) => (
+                  <li key={d.id}>{d.title}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+          {executive.currentSessionId && (
+            <Link
+              href={`/sai/workflows/${executive.currentSessionId}`}
+              className="mt-4 inline-block text-xs text-cyan-300 hover:underline"
+            >
+              Open session →
+            </Link>
+          )}
+        </section>
+      )}
 
       {isAdmin && (
         <form onSubmit={launchObjective} className="enterprise-glass rounded-xl border border-purple-400/20 p-5">

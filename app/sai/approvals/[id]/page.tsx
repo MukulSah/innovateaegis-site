@@ -1,6 +1,7 @@
 import { ApprovalDetailView } from "@/components/sai/approval-detail-view";
 import { SectionPage } from "@/components/sai/section-page";
 import { getSession } from "@/lib/sai/api-auth";
+import { getApprovalTrail } from "@/lib/sai/approval-trail";
 import { getApprovalComments, getWorkflowApprovalById } from "@/lib/sai/governance";
 import { isSupabaseConfigured } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
@@ -14,11 +15,19 @@ export default async function ApprovalDetailPage({ params }: Props) {
   if (!isSupabaseConfigured()) notFound();
   const approval = await getWorkflowApprovalById(id);
   if (!approval) notFound();
-  const comments = await getApprovalComments(id);
+  const [comments, trail] = await Promise.all([
+    getApprovalComments(id),
+    getApprovalTrail(id),
+  ]);
 
   return (
     <SectionPage title="Approval Detail" subtitle="Governance review" description="">
-      <ApprovalDetailView approval={approval} comments={comments} isAdmin={session?.role === "owner"} />
+      <ApprovalDetailView
+        approval={approval}
+        comments={comments}
+        isAdmin={session?.role === "owner"}
+        trail={trail}
+      />
     </SectionPage>
   );
 }

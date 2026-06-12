@@ -3,10 +3,13 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { AgentFeed } from "@/components/sai/agent-feed";
+import type { AgentFeedItem } from "@/lib/sai/agent-feed";
 import type { WorkflowDetail } from "@/lib/sai/types";
 
 type Props = {
   detail: WorkflowDetail;
+  agentFeed?: AgentFeedItem[];
   isAdmin: boolean;
 };
 
@@ -18,7 +21,7 @@ function formatId(id: string) {
   return id.slice(0, 8).toUpperCase();
 }
 
-export function WorkflowDetailView({ detail, isAdmin }: Props) {
+export function WorkflowDetailView({ detail, agentFeed = [], isAdmin }: Props) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const { workflow, progress, activeAgent } = detail;
@@ -45,12 +48,18 @@ export function WorkflowDetailView({ detail, isAdmin }: Props) {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-purple-300/70">
-            Workflow {formatId(workflow.id)}
+            {workflow.sessionNumber ? `Session #${workflow.sessionNumber}` : `Workflow ${formatId(workflow.id)}`}
           </p>
           <h1 className="mt-1 text-xl font-bold text-white">{workflow.objective}</h1>
           <p className="mt-1 text-sm text-white/50">
-            {workflow.projectName} · {workflow.status.replace("_", " ")}
+            {workflow.projectName} · {workflow.currentStage ?? workflow.status.replace("_", " ")}
           </p>
+          {(workflow.executiveSponsorName || workflow.sessionOwnerName) && (
+            <p className="mt-2 text-xs text-white/45">
+              Executive Sponsor: {workflow.executiveSponsorName ?? "CEO"} · Session Owner:{" "}
+              {workflow.sessionOwnerName ?? "COO"}
+            </p>
+          )}
         </div>
         {isAdmin && currentStep && workflow.status === "running" && (
           <button
@@ -68,7 +77,10 @@ export function WorkflowDetailView({ detail, isAdmin }: Props) {
         {[
           { label: "Progress", value: `${progress}%` },
           { label: "Health", value: `${detail.healthScore}` },
-          { label: "Active Agent", value: activeAgent ?? "—" },
+          { label: "Current Agent", value: activeAgent ?? workflow.currentAgentName ?? "—" },
+          { label: "Next Agent", value: workflow.nextAgentName ?? "—" },
+          { label: "Current Deliverable", value: workflow.currentDeliverable ?? "—" },
+          { label: "Current Artifact", value: workflow.currentArtifact ?? "—" },
           { label: "Tasks", value: String(detail.tasks.length) },
         ].map((stat) => (
           <article key={stat.label} className="enterprise-glass rounded-xl border border-white/10 p-4">
@@ -81,6 +93,19 @@ export function WorkflowDetailView({ detail, isAdmin }: Props) {
       <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
         <div className="h-full rounded-full bg-purple-500" style={{ width: `${progress}%` }} />
       </div>
+
+      <section className="enterprise-glass rounded-xl border border-purple-400/20 p-5">
+        <h2 className="text-sm font-semibold text-white">Agent Feed</h2>
+        <p className="mt-1 text-xs text-white/45">Every agent turn, artifact, and approval gate</p>
+        <div className="mt-4">
+          <AgentFeed
+            items={agentFeed}
+            sessionLabel={
+              workflow.sessionNumber ? `Session #${workflow.sessionNumber}` : undefined
+            }
+          />
+        </div>
+      </section>
 
       <section className="enterprise-glass rounded-xl border border-white/10 p-5">
         <h2 className="text-sm font-semibold text-white">Execution Stream</h2>

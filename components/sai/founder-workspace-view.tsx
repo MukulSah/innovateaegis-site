@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import type { Agent } from "@/lib/sai/types";
 import type {
   AgentIntelligenceSection,
@@ -17,6 +17,10 @@ import type {
   FounderWorkspaceViewTab,
   IntelligenceCard,
 } from "@/lib/sai/founder-workspace.types";
+import { FounderActiveSessionPanel } from "@/components/sai/founder-active-session-panel";
+import { PendingApprovalsBanner } from "@/components/sai/pending-approvals-banner";
+import type { FounderApprovalCard } from "@/lib/sai/founder-approvals";
+import type { FounderSessionOverview } from "@/lib/sai/founder-session-overview";
 import { FOUNDER_SECTIONS, FOUNDER_VIEW_TABS } from "@/lib/sai/founder-workspace.types";
 
 type Props = {
@@ -29,6 +33,8 @@ type Props = {
   inbox: FounderInboxItem[];
   timeline: FounderActivityEntry[];
   agentIntelligence: AgentIntelligenceSection[];
+  pendingApprovals: FounderApprovalCard[];
+  activeSession: FounderSessionOverview | null;
   isFounder: boolean;
 };
 
@@ -258,9 +264,176 @@ function ExecutiveAlertsSection({ alerts }: { alerts: ExecutiveAlert[] }) {
   );
 }
 
-function DashboardTab({ dashboard }: { dashboard: FounderDashboard }) {
+type ProjectRecoveryState = {
+  recovery: {
+    sessionNumber: number | null;
+    isStalled: boolean;
+    sessionStatus: string;
+    currentAgentName: string | null;
+    lastActivityHoursAgo: number;
+    stallOverrideAllowed: boolean;
+  } | null;
+  startCheck: { allowed: boolean; message: string; overrideAllowed: boolean };
+};
+
+function LaunchObjectivePanel({ isFounder }: { isFounder: boolean }) {
+  const router = useRouter();
+  const [projectId, setProjectId] = useState("");
+  const [objective, setObjective] = useState("");
+  const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
+  const [recoveryState, setRecoveryState] = useState<ProjectRecoveryState | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!isFounder) return;
+    fetch("/api/sai/founder/objectives")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.projects) setProjects(d.projects.map((p: { id: string; name: string }) => ({ id: p.id, name: p.name })));
+      })
+      .catch(() => {});
+  }, [isFounder]);
+
+  useEffect(() => {
+    if (!isFounder || !projectId) {
+      setRecoveryState(null);
+      return;
+    }
+    fetch(`/api/sai/founder/session-recovery?projectId=${projectId}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.recovery !== undefined) setRecoveryState(d as ProjectRecoveryState);
+      })
+      .catch(() => setRecoveryState(null));
+  }, [isFounder, projectId]);
+
+  const blockedByActiveSession =
+    recoveryState && !recoveryState.startCheck.allowed && !recoveryState.startCheck.overrideAllowed;
+
+  async function handleSubmit(e: FormEvent, supersedeStalled = false) {
+    e.preventDefault();
+    if (!projectId || !objective.trim()) return;
+    if (blockedByActiveSession && !supersedeStalled) return;
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/sai/founder/objectives", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId, objective: objective.trim(), supersedeStalled }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        const step = typeof data.step === "string" ? data.step : "";
+        const msg = data.error || "Failed";
+        throw new Error(step ? `${step}: ${msg}` : msg);
+      }
+      setObjective("");
+      router.push(`/sai/executive/ceo?objectiveId=${data.objective.id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to submit");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (!isFounder) return null;
+
+  return (
+    <section className="mb-6 rounded-xl border border-purple-400/25 bg-purple-500/5 p-5">
+      <h3 className="text-xs font-semibold uppercase tracking-wider text-purple-300/80">Launch Objective</h3>
+      <p className="mt-1 text-xs text-white/50">
+        CEO validates strategy → you approve → COO owns execution session.
+      </p>
+      <form onSubmit={handleSubmit} className="mt-4 space-y-3">
+        <select
+          value={projectId}
+          onChange={(e) => setProjectId(e.target.value)}
+          className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
+          required
+        >
+          <option value="" className="bg-[#0a0a1a]">
+            Select project
+          </option>
+          {projects.map((p) => (
+            <option key={p.id} value={p.id} className="bg-[#0a0a1a]">
+              {p.name}
+            </option>
+          ))}
+        </select>
+        {recoveryState?.recovery && !recoveryState.startCheck.allowed && (
+          <div className="rounded-lg border border-amber-400/25 bg-amber-500/5 p-3 text-sm text-white/75">
+            <p>
+              Project already has active Session #{recoveryState.recovery.sessionNumber}
+            </p>
+            <p className="mt-1 text-xs text-white/50">
+              Status: {recoveryState.recovery.isStalled ? "Stalled" : recoveryState.recovery.sessionStatus}
+              {" · "}
+              Current Agent: {recoveryState.recovery.currentAgentName ?? "None"}
+              {" · "}
+              Last Activity:{" "}
+              {recoveryState.recovery.lastActivityHoursAgo < 1
+                ? `${Math.round(recoveryState.recovery.lastActivityHoursAgo * 60)}m ago`
+                : `${Math.round(recoveryState.recovery.lastActivityHoursAgo)}h ago`}
+            </p>
+            <p className="mt-2 text-xs text-amber-200/80">
+              Use Recovery Actions above to resume or close this session before starting a new one.
+            </p>
+          </div>
+        )}
+
+        <textarea
+          value={objective}
+          onChange={(e) => setObjective(e.target.value)}
+          rows={2}
+          placeholder="e.g. Fix resume upload architecture — target 95% upload success"
+          className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/30"
+          required
+          disabled={Boolean(blockedByActiveSession)}
+        />
+        <div className="flex flex-wrap gap-3">
+          <button
+            type="submit"
+            disabled={loading || Boolean(blockedByActiveSession)}
+            className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-500 disabled:opacity-50"
+          >
+            {loading ? "CEO reviewing…" : "Submit to CEO Agent"}
+          </button>
+          {recoveryState?.startCheck.overrideAllowed && (
+            <button
+              type="button"
+              disabled={loading}
+              onClick={(e) => handleSubmit(e, true)}
+              className="rounded-lg border border-amber-400/30 bg-amber-500/10 px-4 py-2 text-sm text-amber-200 hover:bg-amber-500/20 disabled:opacity-50"
+            >
+              Create New Session (24h+ stalled)
+            </button>
+          )}
+        </div>
+        {error && <p className="text-xs text-red-300">{error}</p>}
+      </form>
+
+    </section>
+  );
+}
+
+function DashboardTab({
+  dashboard,
+  isFounder,
+  pendingApprovals,
+  activeSession,
+}: {
+  dashboard: FounderDashboard;
+  isFounder: boolean;
+  pendingApprovals: FounderApprovalCard[];
+  activeSession: FounderSessionOverview | null;
+}) {
   return (
     <>
+      <PendingApprovalsBanner approvals={pendingApprovals} />
+      {activeSession && <FounderActiveSessionPanel overview={activeSession} />}
+      <LaunchObjectivePanel isFounder={isFounder} />
       <ExecutiveBriefingSection dashboard={dashboard} />
       <CompanyHealthCenter dashboard={dashboard} />
       <ExecutiveAlertsSection alerts={dashboard.executiveAlerts} />
@@ -668,6 +841,8 @@ export function FounderWorkspaceView({
   inbox,
   timeline,
   agentIntelligence,
+  pendingApprovals,
+  activeSession,
   isFounder,
 }: Props) {
   const router = useRouter();
@@ -858,7 +1033,14 @@ export function FounderWorkspaceView({
         </div>
 
         <div className="p-6">
-          {activeTab === "dashboard" && <DashboardTab dashboard={dashboard} />}
+          {activeTab === "dashboard" && (
+            <DashboardTab
+              dashboard={dashboard}
+              isFounder={isFounder}
+              pendingApprovals={pendingApprovals}
+              activeSession={activeSession}
+            />
+          )}
           {activeTab === "discussions" && (
             <DiscussionsTab discussions={discussions} onStartDiscussion={() => setDiscussionOpen(true)} />
           )}

@@ -1,28 +1,44 @@
 import { createSupabaseAdmin } from "@/lib/supabase/server";
 import { getAgentAIConfig } from "./agent-ai-config";
 import { getCompanyAISettings } from "./ai-settings";
-import { generateAICompletion } from "./ai-client";
+import { executeWithRetryPolicy, type AgentModelConfig } from "./ai-retry-engine";
+import {
+  artifactNameForStep,
+  recordAIExecutionEvent,
+  recordTemplateFallback,
+} from "./ai-reliability";
 import { getDefaultAIProvider, getProviderWithKey } from "./ai-providers";
-import { recordAIUsage } from "./ai-usage";
+import { postSystemSessionMessage } from "./executive-session-chat";
 import { getAgentById } from "./agents";
 import { sendAgentMessage } from "./agent-conversations";
 import { createDeliverable } from "./deliverables";
 import { getDecisions } from "./decisions";
 import { getDocuments } from "./documents";
-import { getMemories } from "./memories";
-import { getWorkflowConversations } from "./agent-conversations";
+import { getAgentContext } from "./context-engine";
 import { createRuntimeSession, updateRuntimeSession } from "./agent-runtime";
-import { SDLC_WORKFLOW } from "./sdlc";
+import { requestWorkflowApproval } from "./governance";
+import { createSessionArtifact } from "./session-artifacts";
+import {
+  buildRequirementsTemplate,
+  processRequirementsArtifact,
+  REQUIREMENTS_PM_PROMPT,
+  validateRequirementsDocument,
+} from "./requirements-engine";
+import { getStepGovernanceApproval, SDLC_WORKFLOW } from "./sdlc";
+import { updateSessionFields } from "./session-manager";
+import { updateSessionStatePointers } from "./session-state-view";
 import { createReview } from "./reviews";
 import { recordActivityFeed } from "./activity-feed";
 import { notifyFounder } from "./notifications";
 import type { Agent, DeliverableType, ReasoningLevel } from "./types";
 
 const STEP_DELIVERABLE_TYPE: Record<string, DeliverableType> = {
+  ceo_strategy: "Business Proposal",
+  coo_execution: "Implementation Guide",
   requirements: "Requirements Document",
+  execution_readiness: "Implementation Guide",
   design: "Architecture Document",
   tasks: "Implementation Guide",
-  assignment: "Implementation Guide",
   implementation: "Implementation Guide",
   validation: "Test Plan",
   deployment: "Deployment Plan",
@@ -31,100 +47,125 @@ const STEP_DELIVERABLE_TYPE: Record<string, DeliverableType> = {
 };
 
 const STEP_PROMPTS: Record<string, string> = {
-  requirements: `You are a Product Manager agent. Generate comprehensive requirements including user stories, acceptance criteria, and a roadmap section. Use markdown format.`,
+  ceo_strategy: `You are the CEO Agent. Validate the founder's objective against company goals and KPIs. Output: business objective approved, Priority (High/Medium/Low), Expected Outcome, Success Metrics. Do NOT write code, architecture, or task plans.`,
+  coo_execution: `You are the COO Agent. You own session execution. Create an execution plan: project scope, agents to assign, workflow steps, timeline estimate, and resource requirements.`,
+  requirements: REQUIREMENTS_PM_PROMPT,
+  execution_readiness: `You are the Team Orchestrator agent. Your ONLY job is resource allocation. Review approved requirements, agent availability, and dependencies. Output execution readiness: required agents, dependencies, resources available, execution ready (yes/no).`,
   design: `You are a Solution Architect agent. Generate architecture document with system overview, components, API design, database design, security, and technical decisions.`,
   tasks: `You are a Project Manager agent. Generate an execution plan with milestones, dependencies, timelines, and task breakdown.`,
-  assignment: `You are a Team Orchestrator agent. Generate an assignment plan distributing work across engineering, QA, DevOps, and documentation roles.`,
   implementation: `You are a Software Engineer agent. Generate implementation plan with code designs, pseudocode, technical documentation, and module structure.`,
   validation: `You are a QA agent. Generate test plan with test cases, validation reports, and risk analysis.`,
-  deployment: `You are a DevOps agent. Generate deployment plan with CI/CD pipeline, rollout strategy, and monitoring checklist.`,
+  deployment: `You are a DevOps agent. Generate deployment plan with CI/CD pipeline, staging rollout strategy, and monitoring checklist.`,
   documentation: `You are a Documentation agent. Generate user guides, release notes, and knowledge articles.`,
   knowledge: `You are a Knowledge Engine agent. Summarize lessons learned, decisions, and archive workflow knowledge.`,
 };
 
 export type AgentExecutionContext = {
-  workflowId: string;
+  workflowId?: string | null;
   projectId: string;
   projectName: string;
   objective: string;
   stepKey: string;
   taskId?: string | null;
+  objectiveId?: string | null;
+  strategicBrief?: Record<string, unknown>;
   handoffContext?: string;
   receiverAgentId?: string | null;
 };
 
-async function gatherAgentContext(
-  agent: Agent,
-  ctx: AgentExecutionContext,
-): Promise<string> {
-  const [memories, documents, decisions, conversations] = await Promise.all([
-    getMemories({ projectId: ctx.projectId }),
-    getDocuments({ workflowId: ctx.workflowId }),
-    getDecisions({ workflowId: ctx.workflowId }),
-    getWorkflowConversations(ctx.workflowId),
-  ]);
-
-  const sections = [
-    `# Company Context for ${agent.name} (${agent.role})`,
-    `## Objective\n${ctx.objective}`,
-    `## Project\n${ctx.projectName}`,
-    agent.description ? `## Agent Role\n${agent.description}` : "",
-    agent.responsibilities.length
-      ? `## Responsibilities\n${agent.responsibilities.map((r) => `- ${r}`).join("\n")}`
-      : "",
-    memories.length
-      ? `## Company Memory\n${memories.slice(0, 5).map((m) => `- ${m.title}: ${m.content.slice(0, 200)}`).join("\n")}`
-      : "",
-    documents.length
-      ? `## Workflow Documents\n${documents.map((d) => `### ${d.title}\n${d.content.slice(0, 500)}`).join("\n\n")}`
-      : "",
-    decisions.length
-      ? `## Previous Decisions\n${decisions.map((d) => `- ${d.title}: ${d.decision}`).join("\n")}`
-      : "",
-    conversations.length
-      ? `## Agent Conversations\n${conversations.slice(-5).map((c) => `${c.senderAgentName}: ${c.message.slice(0, 150)}`).join("\n")}`
-      : "",
-    ctx.handoffContext ? `## Handoff Context\n${ctx.handoffContext}` : "",
-  ];
-
-  return sections.filter(Boolean).join("\n\n");
+function toModelConfig(
+  providerData: { provider: { providerName: AgentModelConfig["providerName"]; endpoint: string; model: string }; apiKey: string },
+  agentConfig: Awaited<ReturnType<typeof getAgentAIConfig>>,
+): AgentModelConfig {
+  return {
+    providerName: providerData.provider.providerName,
+    apiKey: providerData.apiKey,
+    endpoint: providerData.provider.endpoint,
+    model: agentConfig?.model ?? providerData.provider.model,
+    temperature: agentConfig?.temperature ?? 0.7,
+    maxTokens: agentConfig?.maxTokens ?? 4096,
+    reasoningLevel: (agentConfig?.reasoningLevel ?? "standard") as ReasoningLevel,
+    systemPrompt: agentConfig?.systemPrompt ?? "",
+  };
 }
 
-async function resolveModelConfig(agentId: string) {
+async function resolveModelConfigs(agentId: string): Promise<{
+  primary: AgentModelConfig | null;
+  fallback: AgentModelConfig | null;
+}> {
   const [settings, agentConfig, defaultProvider] = await Promise.all([
     getCompanyAISettings(),
     getAgentAIConfig(agentId),
     getDefaultAIProvider(),
   ]);
 
+  let primary: AgentModelConfig | null = null;
+
   if (settings.modelMode === "per_agent" && agentConfig?.enabled && agentConfig.providerId) {
     const providerData = await getProviderWithKey(agentConfig.providerId);
-    if (providerData?.provider.enabled) {
-      return {
-        providerName: providerData.provider.providerName,
-        apiKey: providerData.apiKey,
-        endpoint: providerData.provider.endpoint,
-        model: agentConfig.model ?? providerData.provider.model,
-        temperature: agentConfig.temperature,
-        maxTokens: agentConfig.maxTokens,
-        reasoningLevel: agentConfig.reasoningLevel,
-        systemPrompt: agentConfig.systemPrompt,
-      };
+    if (providerData?.provider.enabled && providerData.apiKey) {
+      primary = toModelConfig(providerData, agentConfig);
     }
   }
 
-  if (!defaultProvider?.apiKey) return null;
+  if (!primary && defaultProvider?.apiKey) {
+    primary = toModelConfig(defaultProvider, agentConfig);
+  }
 
-  return {
-    providerName: defaultProvider.provider.providerName,
-    apiKey: defaultProvider.apiKey,
-    endpoint: defaultProvider.provider.endpoint,
-    model: defaultProvider.provider.model,
-    temperature: agentConfig?.temperature ?? 0.7,
-    maxTokens: agentConfig?.maxTokens ?? 4096,
-    reasoningLevel: (agentConfig?.reasoningLevel ?? "standard") as ReasoningLevel,
-    systemPrompt: agentConfig?.systemPrompt ?? "",
-  };
+  let fallback: AgentModelConfig | null = null;
+  if (settings.fallbackProviderId) {
+    const fallbackData = await getProviderWithKey(settings.fallbackProviderId);
+    if (fallbackData?.provider.enabled && fallbackData.apiKey) {
+      fallback = toModelConfig(fallbackData, agentConfig);
+      if (primary && fallback.providerName === primary.providerName && fallback.model === primary.model) {
+        fallback = null;
+      }
+    }
+  }
+
+  return { primary, fallback };
+}
+
+function buildTemplateOutput(agent: Agent, ctx: AgentExecutionContext, stepKey: string): string {
+  const step = SDLC_WORKFLOW.find((s) => s.key === stepKey);
+  if (stepKey === "ceo_strategy") {
+    return `# Strategic Brief
+
+## Objective
+${ctx.objective}
+
+## Business Assessment
+This objective aligns with company priorities for ${ctx.projectName}. It impacts product delivery, user outcomes, and operational focus.
+
+## Priority
+High
+
+## Expected Outcome
+Measurable improvement against the stated objective with clear success criteria.
+
+## Success Metrics
+- Primary KPI tied to objective completion
+- User-facing quality metric improvement
+- Delivery timeline adherence
+
+## Recommendation
+Proceed — COO may activate execution session after founder approval.
+
+_Generated by ${agent.name} (template mode — AI provider unavailable or timed out)._`;
+  }
+  if (stepKey === "requirements") {
+    return buildRequirementsTemplate({
+      projectName: ctx.projectName,
+      objective: ctx.objective,
+      contextMarkdown: ctx.handoffContext,
+    });
+  }
+  return `# ${step?.deliverableTitle ?? "Work Output"}
+
+Objective: ${ctx.objective}
+Project: ${ctx.projectName}
+
+Generated by ${agent.name} (template mode — AI provider unavailable or timed out).`;
 }
 
 function buildSystemPrompt(
@@ -160,74 +201,210 @@ export async function executeAgentWork(
   const agent = await getAgentById(agentId);
   if (!agent) throw new Error("Agent not found");
 
-  const modelConfig = await resolveModelConfig(agentId);
+  const { primary: modelConfig, fallback: fallbackConfig } = await resolveModelConfigs(agentId);
   const step = SDLC_WORKFLOW.find((s) => s.key === ctx.stepKey);
-  const contextBlock = await gatherAgentContext(agent, ctx);
+  const requestedArtifact = artifactNameForStep(ctx.stepKey);
+  let contextBundle;
+  try {
+    contextBundle = await getAgentContext(agent, ctx);
+  } catch (error) {
+    console.warn("[agent-executor] context load failed, using minimal context:", error);
+    contextBundle = {
+      markdown: `# Objective\n${ctx.objective}\n\n# Project\n${ctx.projectName}`,
+      sources: ["objective"],
+      loadedAt: new Date().toISOString(),
+    };
+  }
+  const contextBlock = contextBundle.markdown;
 
   const session = await createRuntimeSession({
     agentId,
-    workflowId: ctx.workflowId,
+    workflowId: ctx.workflowId ?? null,
     taskId: ctx.taskId,
     modelProvider: modelConfig?.providerName ?? "template",
     modelName: modelConfig?.model ?? "template",
   });
+
+  const supabaseForContext = createSupabaseAdmin();
+  await supabaseForContext
+    .from("agent_runtime_sessions")
+    .update({ context_loaded_at: contextBundle.loadedAt })
+    .eq("id", session.id);
 
   try {
     let output: string;
     let inputTokens = 0;
     let outputTokens = 0;
 
+    let usedAI = false;
+    const systemPrompt = modelConfig
+      ? buildSystemPrompt(agent, ctx.stepKey, modelConfig.systemPrompt, modelConfig.reasoningLevel)
+      : "";
+    const userPrompt = `${contextBlock}\n\n## Your Task\n${step?.taskDescription ?? "Complete assigned work for: " + ctx.objective}\n\nGenerate the complete deliverable now.`;
+
     if (modelConfig?.apiKey) {
-      const userPrompt = `${contextBlock}\n\n## Your Task\n${step?.taskDescription ?? "Complete assigned work for: " + ctx.objective}\n\nGenerate the complete deliverable now.`;
-
-      const result = await generateAICompletion({
-        providerName: modelConfig.providerName,
-        apiKey: modelConfig.apiKey,
-        endpoint: modelConfig.endpoint,
-        model: modelConfig.model,
-        systemPrompt: buildSystemPrompt(
-          agent,
-          ctx.stepKey,
-          modelConfig.systemPrompt,
-          modelConfig.reasoningLevel,
-        ),
+      const retryResult = await executeWithRetryPolicy({
+        primary: modelConfig,
+        fallback: fallbackConfig,
+        systemPrompt,
         userPrompt,
-        temperature: modelConfig.temperature,
-        maxTokens: modelConfig.maxTokens,
-      });
-
-      output = result.content;
-      inputTokens = result.inputTokens;
-      outputTokens = result.outputTokens;
-
-      await recordAIUsage({
-        provider: modelConfig.providerName,
-        model: modelConfig.model,
-        agent: agent.name,
+        agentName: agent.name,
         agentId,
-        inputTokens,
-        outputTokens,
         workflowId: ctx.workflowId,
-        sessionId: session.id,
+        runtimeSessionId: session.id,
+        onStatusMessage: ctx.workflowId
+          ? async (message) => {
+              await postSystemSessionMessage(ctx.workflowId!, message, {
+                projectId: ctx.projectId,
+                stepKey: ctx.stepKey,
+                artifactName: requestedArtifact,
+              });
+            }
+          : undefined,
       });
+
+      if (retryResult.ok) {
+        output = retryResult.content;
+        inputTokens = retryResult.inputTokens;
+        outputTokens = retryResult.outputTokens;
+        usedAI = true;
+
+        await recordAIExecutionEvent({
+          workflowRunId: ctx.workflowId,
+          projectId: ctx.projectId,
+          agentId,
+          agentName: agent.name,
+          stepKey: ctx.stepKey,
+          artifactRequested: requestedArtifact,
+          provider: retryResult.provider,
+          model: retryResult.model,
+          attemptCount: retryResult.attemptCount,
+          success: true,
+          usedFallback: retryResult.usedFallback,
+          usedTemplate: false,
+          timedOut: false,
+        });
+      } else {
+        console.error(
+          `[agent-executor] AI retries exhausted for ${ctx.stepKey}:`,
+          retryResult.errors.join("; "),
+        );
+        output = buildTemplateOutput(agent, ctx, ctx.stepKey);
+        if (ctx.workflowId) {
+          await recordTemplateFallback({
+            workflowRunId: ctx.workflowId,
+            projectId: ctx.projectId,
+            agentId,
+            agentName: agent.name,
+            agentRole: agent.role,
+            stepKey: ctx.stepKey,
+            artifactRequested: requestedArtifact,
+            provider: retryResult.lastProvider,
+            model: retryResult.lastModel,
+            attemptCount: retryResult.attemptCount,
+            errors: retryResult.errors,
+            timedOut: retryResult.timedOut,
+            output,
+          });
+        }
+      }
     } else {
-      output = `# ${step?.deliverableTitle ?? "Work Output"}\n\nObjective: ${ctx.objective}\n\nGenerated by ${agent.name} (template mode — configure AI provider for live generation).\n\n${contextBlock.slice(0, 1000)}`;
+      output = buildTemplateOutput(agent, ctx, ctx.stepKey);
+      if (ctx.workflowId) {
+        await recordTemplateFallback({
+          workflowRunId: ctx.workflowId,
+          projectId: ctx.projectId,
+          agentId,
+          agentName: agent.name,
+          agentRole: agent.role,
+          stepKey: ctx.stepKey,
+          artifactRequested: requestedArtifact,
+          provider: "none",
+          model: "unconfigured",
+          attemptCount: 0,
+          errors: ["No AI provider configured"],
+          timedOut: false,
+          output,
+        });
+      }
     }
 
     const deliverableType = STEP_DELIVERABLE_TYPE[ctx.stepKey] ?? "Knowledge Base Article";
+    const artifactName =
+      ctx.stepKey === "coo_execution" ? "coo_execution_plan_v1" : `${ctx.stepKey}_v1`;
 
-    const deliverable = await createDeliverable({
-      workflowId: ctx.workflowId,
+    let deliverable: { id: string } | null = null;
+    if (ctx.workflowId) {
+      deliverable = await createDeliverable({
+        workflowId: ctx.workflowId,
+        projectId: ctx.projectId,
+        taskId: ctx.taskId,
+        title: step?.deliverableTitle ?? `${agent.role} Output`,
+        type: deliverableType,
+        status: "DRAFT",
+        owner: agent.name,
+        content: output,
+      });
+    }
+
+    const sessionArtifact = await createSessionArtifact({
+      workflowRunId: ctx.workflowId ?? null,
+      objectiveId: ctx.objectiveId ?? null,
+      runtimeSessionId: session.id,
+      agentId,
+      stepKey: ctx.stepKey,
+      inputSummary: `Sources: ${contextBundle.sources.join(", ")}`,
+      outputSummary: output.slice(0, 3000),
+      artifactName,
+      artifactType: step?.deliverableType ?? "document",
+      artifactRefId: deliverable?.id ?? null,
       projectId: ctx.projectId,
-      taskId: ctx.taskId,
-      title: step?.deliverableTitle ?? `${agent.role} Output`,
-      type: deliverableType,
-      status: "DRAFT",
-      owner: agent.name,
-      content: output,
     });
 
-    if (ctx.receiverAgentId) {
+    if (ctx.workflowId) {
+      await updateSessionFields(ctx.workflowId, {
+        currentStage: step?.label ?? ctx.stepKey,
+      });
+      await updateSessionStatePointers({
+        sessionId: ctx.workflowId,
+        currentAgentId: agentId,
+        workflowStage: ctx.stepKey,
+        currentStage: step?.label ?? ctx.stepKey,
+        currentArtifactId: sessionArtifact.id,
+        currentArtifact: artifactName,
+        currentDeliverable: artifactName,
+      });
+    }
+
+    if (ctx.stepKey === "requirements" && ctx.workflowId) {
+      validateRequirementsDocument(output);
+      await processRequirementsArtifact({
+        sessionId: ctx.workflowId,
+        projectId: ctx.projectId,
+        projectName: ctx.projectName,
+        objective: ctx.objective,
+        artifactId: sessionArtifact.id,
+        content: output,
+        agentId,
+        agentName: agent.name,
+      });
+    }
+
+    const governanceApproval = getStepGovernanceApproval(ctx.stepKey);
+    if (governanceApproval && ctx.workflowId) {
+      await requestWorkflowApproval({
+        workflowId: ctx.workflowId,
+        projectId: ctx.projectId,
+        approvalType: governanceApproval,
+        title: step?.deliverableTitle ?? ctx.stepKey,
+        description: `${agent.name} completed ${step?.label ?? ctx.stepKey}`,
+        requestedBy: agent.name,
+        artifactContent: output,
+        context: ctx.stepKey === "deployment" ? { releaseType: "major" } : {},
+      });
+    }
+
+    if (ctx.receiverAgentId && ctx.workflowId) {
       const receiver = await getAgentById(ctx.receiverAgentId);
       await sendAgentMessage({
         workflowId: ctx.workflowId,
@@ -257,7 +434,7 @@ export async function executeAgentWork(
           reviewerAgentId: ctx.receiverAgentId,
           reviewerName: receiver.name,
           entityType: "deliverable",
-          entityId: deliverable.id,
+          entityId: deliverable?.id ?? session.id,
           content: output.slice(0, 500),
         });
       }
@@ -274,10 +451,32 @@ export async function executeAgentWork(
     await recordActivityFeed({
       actor: agent.name,
       action: "agent_executed",
-      targetType: "workflow",
-      targetId: ctx.workflowId,
+      targetType: ctx.workflowId ? "workflow" : "objective",
+      targetId: ctx.workflowId ?? ctx.objectiveId ?? session.id,
       description: `${step?.label ?? ctx.stepKey} completed`,
     });
+
+    if (ctx.workflowId || ctx.objectiveId) {
+      try {
+        const { appendSessionChat } = await import("./session-chat");
+        await appendSessionChat({
+          workflowRunId: ctx.workflowId ?? null,
+          objectiveId: ctx.objectiveId ?? null,
+          projectId: ctx.projectId,
+          speakerType: "agent",
+          speakerName: agent.name,
+          speakerRole: agent.role,
+          message: output.slice(0, 4000),
+          artifactName: artifactName,
+          stepKey: ctx.stepKey,
+          agentId,
+          artifactId: sessionArtifact.id,
+          messageKind: "artifact",
+        });
+      } catch {
+        // Session chat is best-effort
+      }
+    }
 
     const supabase = createSupabaseAdmin();
     if (ctx.taskId) {
@@ -287,14 +486,16 @@ export async function executeAgentWork(
         .eq("id", ctx.taskId);
     }
 
-    try {
-      const { generateAgentIntelligence } = await import("./agent-intelligence");
-      await generateAgentIntelligence(agentId);
-    } catch {
-      // Intelligence refresh is best-effort after agent execution
+    if (ctx.workflowId) {
+      try {
+        const { generateAgentIntelligence } = await import("./agent-intelligence");
+        await generateAgentIntelligence(agentId);
+      } catch {
+        // Intelligence refresh is best-effort after agent execution
+      }
     }
 
-    return { sessionId: session.id, output, usedAI: Boolean(modelConfig?.apiKey) };
+    return { sessionId: session.id, output, usedAI };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Execution failed";
     await updateRuntimeSession(session.id, {

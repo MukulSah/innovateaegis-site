@@ -8,6 +8,7 @@ type ObjectiveRow = {
   description: string;
   status: ProjectObjective["status"];
   workflow_run_id: string | null;
+  strategic_brief: Record<string, unknown> | null;
   created_at: string;
   completed_at: string | null;
 };
@@ -20,6 +21,7 @@ function mapRow(row: ObjectiveRow): ProjectObjective {
     description: row.description,
     status: row.status,
     workflowRunId: row.workflow_run_id,
+    strategicBrief: row.strategic_brief ?? {},
     createdAt: row.created_at,
     completedAt: row.completed_at,
   };
@@ -43,6 +45,7 @@ export async function createProjectObjective(
   description: string,
   workflowRunId?: string | null,
   createdBy?: string | null,
+  status: ProjectObjective["status"] = "active",
 ): Promise<ProjectObjective> {
   const supabase = createSupabaseAdmin();
   const { data, error } = await supabase
@@ -51,6 +54,7 @@ export async function createProjectObjective(
       project_id: projectId,
       title,
       description,
+      status,
       workflow_run_id: workflowRunId ?? null,
       created_by: createdBy ?? null,
     })

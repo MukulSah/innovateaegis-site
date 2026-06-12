@@ -3,27 +3,39 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { ApprovalDebugTrail } from "@/components/sai/approval-debug-trail";
+import type { ApprovalTrail, ApprovalTrailStep } from "@/lib/sai/approval-trail";
 import type { ApprovalComment, WorkflowApproval } from "@/lib/sai/types";
 
 type Props = {
   approval: WorkflowApproval;
   comments: ApprovalComment[];
   isAdmin: boolean;
+  trail?: ApprovalTrail | null;
 };
 
-export function ApprovalDetailView({ approval, comments, isAdmin }: Props) {
+export function ApprovalDetailView({ approval, comments, isAdmin, trail }: Props) {
   const router = useRouter();
   const [note, setNote] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [debugSteps, setDebugSteps] = useState<ApprovalTrailStep[]>(trail?.steps ?? []);
 
   async function decide(decision: "approved" | "rejected" | "revision_required" | "escalated", force = false) {
     setLoading(true);
+    setError("");
     const res = await fetch(`/api/sai/approvals/${approval.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ decision, comments: note, force }),
     });
-    if (res.ok) router.refresh();
+    const data = await res.json();
+    if (res.ok) {
+      router.refresh();
+    } else {
+      setError(data.error ?? "Approval failed");
+      if (Array.isArray(data.steps)) setDebugSteps(data.steps);
+    }
     setLoading(false);
   }
 
@@ -40,6 +52,13 @@ export function ApprovalDetailView({ approval, comments, isAdmin }: Props) {
         <h2 className="text-sm font-semibold text-white">Generated Artifact</h2>
         <pre className="mt-3 max-h-80 overflow-auto whitespace-pre-wrap text-xs text-white/65">{approval.artifactContent || approval.description}</pre>
       </section>
+
+      {(debugSteps.length > 0 || trail) && (
+        <ApprovalDebugTrail
+          steps={debugSteps}
+          errorMessage={trail?.errorMessage ?? error}
+        />
+      )}
 
       <section className="enterprise-glass rounded-xl border border-white/10 p-5">
         <h2 className="text-sm font-semibold text-white">Discussion History</h2>
@@ -68,6 +87,7 @@ export function ApprovalDetailView({ approval, comments, isAdmin }: Props) {
             placeholder="Comments for the approval record…"
             className="mt-3 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none"
           />
+          {error && <p className="mt-2 text-xs text-red-300">{error}</p>}
           <div className="mt-4 flex flex-wrap gap-2">
             <button type="button" disabled={loading} onClick={() => decide("approved")} className="rounded-lg bg-emerald-600/80 px-4 py-2 text-xs font-semibold text-white">Approve</button>
             <button type="button" disabled={loading} onClick={() => decide("rejected")} className="rounded-lg border border-red-400/30 px-4 py-2 text-xs text-red-300">Reject</button>

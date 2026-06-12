@@ -2,6 +2,8 @@ import { FounderWorkspaceView } from "@/components/sai/founder-workspace-view";
 import { getAgents } from "@/lib/sai/agents";
 import { getCurrentUser } from "@/lib/sai/current-user.server";
 import { isFounder } from "@/lib/sai/current-user.types";
+import { getFounderPendingApprovals } from "@/lib/sai/founder-approvals";
+import { getFounderActiveSessionOverview } from "@/lib/sai/founder-session-overview";
 import { getFounderWorkspaceData, getFounderWorkspaceItems } from "@/lib/sai/founder-workspace";
 import { isSupabaseConfigured } from "@/lib/supabase/server";
 
@@ -35,14 +37,16 @@ export default async function FounderWorkspacePage() {
     agentIntelligence: [],
   };
 
-  const [workspaceData, workspaceItems, agents] =
+  const [workspaceData, workspaceItems, agents, pendingApprovals, activeSession] =
     configured && userIsFounder
       ? await Promise.all([
           getFounderWorkspaceData(),
           getFounderWorkspaceItems(),
           getAgents(),
+          getFounderPendingApprovals(),
+          getFounderActiveSessionOverview(),
         ])
-      : [emptyData, [], []];
+      : [emptyData, [], [], [], null];
 
   return (
     <div className="space-y-6">
@@ -68,6 +72,8 @@ export default async function FounderWorkspacePage() {
         inbox={workspaceData.inbox}
         timeline={workspaceData.timeline}
         agentIntelligence={workspaceData.agentIntelligence}
+        pendingApprovals={pendingApprovals}
+        activeSession={activeSession}
         isFounder={userIsFounder}
       />
     </div>

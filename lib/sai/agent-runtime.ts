@@ -1,4 +1,5 @@
 import { createSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase/server";
+import { nullableUuid } from "./nullable-uuid";
 import type { AgentRuntimeSession, RuntimeSessionStatus } from "./types";
 
 type SessionRow = {
@@ -57,8 +58,8 @@ export async function createRuntimeSession(input: {
     .from("agent_runtime_sessions")
     .insert({
       agent_id: input.agentId,
-      workflow_id: input.workflowId ?? null,
-      task_id: input.taskId ?? null,
+      workflow_id: nullableUuid(input.workflowId),
+      task_id: nullableUuid(input.taskId),
       status: "RUNNING",
       model_provider: input.modelProvider,
       model_name: input.modelName,

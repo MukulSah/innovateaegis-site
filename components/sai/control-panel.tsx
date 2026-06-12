@@ -11,8 +11,8 @@ function workflowProgress(steps: WorkflowRun["steps"]) {
   return Math.round((steps.filter((s) => s.status === "completed").length / steps.length) * 100);
 }
 
-function activeAgent(steps: WorkflowRun["steps"]) {
-  return steps.find((s) => s.status === "in_progress")?.assignedAgentName ?? "—";
+function activeAgent(wf: WorkflowRun) {
+  return wf.currentAgentName ?? "—";
 }
 
 function formatId(id: string) {
@@ -281,7 +281,7 @@ export function ControlPanel({ stats, agents, tasks, workflows, projects, workfl
                     <p className="text-[10px] text-purple-300/70">WF-{formatId(wf.id)}</p>
                     <p className="text-sm font-medium text-white">{wf.objective}</p>
                     <p className="text-xs text-white/45">
-                      {wf.projectName} · {wf.status} · {wf.governanceStatus?.replace(/_/g, " ") ?? "normal"} · {wf.workflowMode?.replace(/_/g, " ") ?? "semi autonomous"} · {workflowProgress(wf.steps)}% · Agent: {activeAgent(wf.steps)}
+                      {wf.projectName} · {wf.status} · {wf.governanceStatus?.replace(/_/g, " ") ?? "normal"} · {wf.workflowMode?.replace(/_/g, " ") ?? "semi autonomous"} · {workflowProgress(wf.steps)}% · Agent: {activeAgent(wf)}
                     </p>
                     <p className="mt-1 text-[10px] text-white/35">
                       Created {formatTime(wf.createdAt)} · Updated {formatTime(wf.updatedAt)}

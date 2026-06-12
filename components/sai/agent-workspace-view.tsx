@@ -36,8 +36,49 @@ export function AgentWorkspaceView({
   const activeWorkflow = workspace.assignedTasks.find((t) => t.workflowRunId)?.workflowRunId ?? null;
   const stepKey = workspace.assignedTasks[0]?.workflowStepKey ?? "requirements";
 
+  const currentSession = workspace.assignedTasks.find((t) => t.workflowRunId);
+
   return (
     <div className="space-y-6">
+      <section className="enterprise-glass rounded-xl border border-cyan-400/20 bg-cyan-500/5 p-5">
+        <h3 className="text-sm font-semibold text-white">Agent Inbox</h3>
+        <p className="mt-1 text-xs text-white/45">
+          Assigned context for {agent.name} — tasks, session, reviews, and artifacts.
+        </p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+            <p className="text-[10px] uppercase text-white/40">Assigned Tasks</p>
+            <p className="text-lg font-bold text-white">{workspace.assignedTasks.length}</p>
+          </div>
+          <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+            <p className="text-[10px] uppercase text-white/40">Current Session</p>
+            <p className="text-sm font-medium text-white truncate">
+              {currentSession?.workflowRunId ? "Active" : "—"}
+            </p>
+          </div>
+          <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+            <p className="text-[10px] uppercase text-white/40">Pending Reviews</p>
+            <p className="text-lg font-bold text-amber-300">{workQueue.review.length}</p>
+          </div>
+          <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+            <p className="text-[10px] uppercase text-white/40">Artifacts / Docs</p>
+            <p className="text-lg font-bold text-white">{workspace.documentsCreated.length}</p>
+          </div>
+        </div>
+        {workspace.assignedTasks.length > 0 && (
+          <ul className="mt-4 space-y-2">
+            {workspace.assignedTasks.slice(0, 5).map((t) => (
+              <li key={t.id} className="rounded-lg border border-white/5 bg-white/[0.02] p-3">
+                <p className="text-sm text-white">{t.title}</p>
+                <p className="text-[10px] text-white/40">
+                  {t.projectName} · {t.status} · {t.workflowStepKey ?? "task"}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
       <div className="enterprise-glass rounded-xl border border-white/10 p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -169,6 +210,26 @@ export function AgentWorkspaceView({
                 <li key={a.id} className="border-b border-white/5 pb-2 last:border-0">
                   <p className="text-xs text-white/80">{a.action}</p>
                   <p className="text-[10px] text-white/35">{formatTime(a.createdAt)}</p>
+                </li>
+              ))
+            )}
+          </ul>
+        </section>
+
+        <section className="enterprise-glass rounded-xl border border-white/10 p-5">
+          <h3 className="text-sm font-semibold text-white">COO Inbox</h3>
+          <p className="mt-1 text-[10px] text-white/40">Assigned by COO · session work queue</p>
+          <ul className="mt-3 space-y-2">
+            {(workspace.sessionHandoffs ?? []).length === 0 ? (
+              <li className="text-xs text-white/40">Nothing waiting for you.</li>
+            ) : (
+              (workspace.sessionHandoffs ?? []).slice(0, 6).map((h) => (
+                <li key={h.id} className="rounded border border-cyan-400/15 p-3">
+                  <p className="text-[10px] text-cyan-300/70">
+                    {h.status} · Assigned by COO
+                  </p>
+                  <p className="mt-1 font-mono text-xs text-purple-300">{h.artifactName ?? h.toStepKey}</p>
+                  <p className="mt-1 text-[10px] text-white/50">{h.reason}</p>
                 </li>
               ))
             )}

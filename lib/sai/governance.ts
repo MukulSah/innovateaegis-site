@@ -47,6 +47,7 @@ type ApprovalRow = {
 };
 
 const CRITICAL_TYPES: ApprovalType[] = [
+  "strategic_objective",
   "requirements",
   "architecture",
   "milestones",
@@ -172,7 +173,7 @@ export function resolveApprovalMode(
 }
 
 export type ApprovalRequestInput = {
-  workflowId: string;
+  workflowId?: string | null;
   workflowStepId?: string | null;
   projectId: string;
   approvalType: ApprovalType;
@@ -217,7 +218,7 @@ export async function requestWorkflowApproval(
   const { data, error } = await supabase
     .from("workflow_approvals")
     .insert({
-      workflow_id: input.workflowId,
+      workflow_id: input.workflowId ?? null,
       workflow_step_id: input.workflowStepId ?? null,
       project_id: input.projectId,
       approval_type: input.approvalType,
@@ -293,11 +294,15 @@ export async function requestWorkflowApproval(
     );
   }
 
-  if (!isAuto) {
+  if (!isAuto && input.workflowId) {
     const governanceStatus = isEscalated ? "escalated" : "waiting_for_approval";
     await supabase
       .from("workflow_runs")
-      .update({ governance_status: governanceStatus, status: "paused" })
+      .update({
+        governance_status: governanceStatus,
+        status: "paused",
+        session_status: "waiting_approval",
+      })
       .eq("id", input.workflowId);
   }
 
@@ -402,6 +407,7 @@ export async function processApprovalDecision(
   actor: string,
   comments = "",
   force = false,
+  actorUserId?: string | null,
 ): Promise<WorkflowApproval> {
   const supabase = createSupabaseAdmin();
   const existing = await getWorkflowApprovalById(approvalId);
@@ -482,24 +488,163 @@ export async function processApprovalDecision(
     });
   }
 
-  if (decision === "approved") {
-    await supabase
-      .from("workflow_runs")
-      .update({ governance_status: "normal", status: "running" })
-      .eq("id", approval.workflowId);
-    await incrementAgentMetric(approval.requestedBy, "approvals_passed");
-  } else if (decision === "rejected" || decision === "revision_required") {
-    await supabase
-      .from("workflow_runs")
-      .update({ governance_status: "waiting_for_revision", status: "paused" })
-      .eq("id", approval.workflowId);
-    await incrementAgentMetric(approval.requestedBy, "approvals_rejected");
-  } else if (decision === "escalated") {
-    await supabase
-      .from("workflow_runs")
-      .update({ governance_status: "escalated", status: "paused" })
-      .eq("id", approval.workflowId);
-    await incrementAgentMetric(approval.requestedBy, "escalated_actions");
+  if (approval.approvalType === "strategic_objective" && decision === "approved") {
+    const { activateSession } = await import("./founder-objectives");
+    const {
+      createApprovalTrail,
+      appendTrailStep,
+      completeTrail,
+      getApprovalTrailById,
+      ApprovalActivationError,
+    } = await import("./approval-trail");
+
+    const { data: objective } = await supabase
+      .from("project_objectives")
+      .select("id")
+      .eq("project_id", approval.projectId)
+      .eq("status", "pending_founder")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const trail = await createApprovalTrail(approvalId, objective?.id ?? null);
+    await appendTrailStep(trail.id, {
+      key: "approval_received",
+      label: "Approval Received",
+      status: "completed",
+    });
+    await appendTrailStep(trail.id, {
+      key: "approval_updated",
+      label: "Approval Updated",
+      status: "completed",
+    });
+    await appendTrailStep(trail.id, {
+      key: "founder_decision_saved",
+      label: "Founder Decision Saved",
+      status: "completed",
+    });
+
+    if (objective?.id) {
+      await appendTrailStep(trail.id, {
+        key: "session_activation_started",
+        label: "Session Activation Started",
+        status: "completed",
+      });
+      try {
+        const workflowRun = await activateSession(
+          objective.id,
+          { userId: actorUserId ?? null, name: actor },
+          trail.id,
+        );
+        await completeTrail(trail.id, "completed", undefined, workflowRun.id);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Session activation failed";
+        await appendTrailStep(trail.id, {
+          key: "session_activation_failed",
+          label: "Session Activation Failed",
+          status: "failed",
+          error: message,
+        });
+        await completeTrail(trail.id, "failed", message);
+        const updatedTrail = await getApprovalTrailById(trail.id);
+        throw new ApprovalActivationError(message, trail.id, updatedTrail?.steps ?? []);
+      }
+    } else {
+      await appendTrailStep(trail.id, {
+        key: "objective_not_found",
+        label: "No Pending Objective Found",
+        status: "failed",
+        error: "No objective with status pending_founder",
+      });
+      await completeTrail(trail.id, "failed", "No pending objective found for activation");
+    }
+  }
+
+  if (approval.workflowId) {
+    if (decision === "approved") {
+      await supabase
+        .from("workflow_runs")
+        .update({
+          governance_status: "normal",
+          status: "running",
+          session_status: "running",
+        })
+        .eq("id", approval.workflowId);
+
+      if (approval.approvalType === "requirements") {
+        const { data: wf } = await supabase
+          .from("workflow_runs")
+          .select("session_owner_agent_id")
+          .eq("id", approval.workflowId)
+          .maybeSingle();
+        const { data: reqArtifact } = await supabase
+          .from("session_artifacts")
+          .select("id")
+          .eq("workflow_run_id", approval.workflowId)
+          .eq("artifact_name", "requirements_v1")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        const { data: pmStep } = await supabase
+          .from("workflow_run_steps")
+          .select("assigned_agent_id")
+          .eq("workflow_run_id", approval.workflowId)
+          .eq("step_key", "requirements")
+          .maybeSingle();
+        if (wf?.session_owner_agent_id) {
+          const { routeAfterStepComplete } = await import("./coo-routing");
+          try {
+            await routeAfterStepComplete({
+              sessionId: approval.workflowId,
+              completedStepKey: "requirements",
+              artifactId: reqArtifact?.id ?? null,
+              artifactName: "requirements_v1",
+              completedByAgentId: (pmStep?.assigned_agent_id as string) ?? wf.session_owner_agent_id,
+              cooAgentId: wf.session_owner_agent_id as string,
+            });
+          } catch {
+            // Routing is best-effort; orchestration resume continues
+          }
+        }
+        await supabase
+          .from("workflow_runs")
+          .update({ session_status: "executing", workflow_stage: "design" })
+          .eq("id", approval.workflowId);
+      }
+
+      if (approval.approvalType !== "strategic_objective") {
+        const { resumeOrchestration } = await import("./orchestration");
+        const { data: wf } = await supabase
+          .from("workflow_runs")
+          .select("objective, project_id")
+          .eq("id", approval.workflowId)
+          .maybeSingle();
+        const { data: project } = wf
+          ? await supabase.from("projects").select("name").eq("id", wf.project_id).maybeSingle()
+          : { data: null };
+        if (wf) {
+          await resumeOrchestration(
+            approval.workflowId,
+            wf.project_id,
+            wf.objective,
+            project?.name ?? "Project",
+          );
+        }
+      }
+      await incrementAgentMetric(approval.requestedBy, "approvals_passed");
+    } else if (decision === "rejected" || decision === "revision_required") {
+      await supabase
+        .from("workflow_runs")
+        .update({ governance_status: "waiting_for_revision", status: "paused" })
+        .eq("id", approval.workflowId);
+      await incrementAgentMetric(approval.requestedBy, "approvals_rejected");
+    } else if (decision === "escalated") {
+      await supabase
+        .from("workflow_runs")
+        .update({ governance_status: "escalated", status: "paused" })
+        .eq("id", approval.workflowId);
+      await incrementAgentMetric(approval.requestedBy, "escalated_actions");
+    }
   }
 
   await recordActivity({

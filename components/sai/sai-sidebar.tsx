@@ -11,15 +11,27 @@ const pillarNav = [
   { label: "Organizational Memory", href: "/sai/memory", icon: "◎" },
 ];
 
+const executiveNav = [
+  { label: "CEO Workspace", href: "/sai/executive/ceo", icon: "★" },
+  { label: "COO Workspace", href: "/sai/executive/coo", icon: "★" },
+];
+
+const executionNav = [
+  { label: "Execution Center", href: "/sai/execution", icon: "▦" },
+  { label: "Project Memory", href: "/sai/project-memory", icon: "◎" },
+  { label: "Resource Center", href: "/sai/resources", icon: "⬡" },
+];
+
 const operationsNav = [
   { label: "Dashboard", href: "/sai", icon: "◈" },
   { label: "Projects", href: "/sai/projects", icon: "▣" },
   { label: "Tasks", href: "/sai/tasks", icon: "▤" },
-  { label: "Execution Board", href: "/sai/execution", icon: "▦" },
   { label: "Inbox", href: "/sai/inbox", icon: "✉" },
   { label: "Approvals", href: "/sai/approvals", icon: "✓" },
-  { label: "Employees", href: "/sai/employees", icon: "◫" },
   { label: "Releases", href: "/sai/releases", icon: "▲" },
+];
+
+const intelligenceNav = [
   { label: "Timeline", href: "/sai/timeline", icon: "⏱" },
   { label: "Analytics", href: "/sai/analytics", icon: "◆" },
 ];
@@ -107,7 +119,10 @@ export function SAISidebar({ user }: Props) {
 
       <nav className="flex-1 overflow-y-auto p-4" aria-label="SAI navigation">
         <NavSection title="SAI Headquarters" items={pillarNav} pathname={pathname} />
+        <NavSection title="Executive Office" items={executiveNav} pathname={pathname} />
+        <NavSection title="Execution" items={executionNav} pathname={pathname} />
         <NavSection title="Operations" items={operationsNav} pathname={pathname} />
+        <NavSection title="Intelligence" items={intelligenceNav} pathname={pathname} />
         <NavSection title="Settings" items={settingsNav} pathname={pathname} />
       </nav>
 
