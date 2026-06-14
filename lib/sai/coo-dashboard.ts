@@ -3,8 +3,8 @@ import { findAgentForRole, getAgents } from "./agents";
 import { getSessionHandoffs } from "./coo-routing";
 import { computeCooHealthSummary } from "./execution-health";
 import { getWorkflowApprovals } from "./governance";
-import { getAllActiveSessions } from "./session-manager";
-import { getSessionStateView } from "./session-state-view";
+import { getAllActiveSessions, getSessionsByLifecycle } from "./session-manager";
+import { getSessionState } from "./session-state-engine";
 import { getNextPrimaryStage } from "./sdlc";
 import { getWorkflowRunById } from "./workflows";
 import type { SessionEscalation, SessionStatus } from "./types";
@@ -37,6 +37,8 @@ export type CooSessionView = {
 
 export type CooDashboardData = {
   activeSessions: CooSessionView[];
+  completedSessions: CooSessionView[];
+  failedSessions: CooSessionView[];
   blockedSessions: CooSessionView[];
   sessionQueue: CooSessionView[];
   pendingApprovals: Awaited<ReturnType<typeof getWorkflowApprovals>>;
@@ -62,7 +64,7 @@ function mapEscalation(row: EscalationRow): SessionEscalation {
 async function buildSessionView(sessionId: string): Promise<CooSessionView | null> {
   const [workflow, state] = await Promise.all([
     getWorkflowRunById(sessionId),
-    getSessionStateView(sessionId),
+    getSessionState(sessionId),
   ]);
   if (!workflow || !state) return null;
 
@@ -89,14 +91,31 @@ export async function getCooDashboard(cooAgentId: string): Promise<CooDashboardD
   const allActive = await getAllActiveSessions();
   const owned = allActive.filter((s) => s.session_owner_agent_id === cooAgentId);
 
+  const lifecycleRows = await getSessionsByLifecycle({
+    includeCompleted: true,
+    includeCancelled: true,
+    limit: 30,
+  });
+  const ownedLifecycle = lifecycleRows.filter((s) => s.session_owner_agent_id === cooAgentId);
+
   const views = (await Promise.all(owned.map((s) => buildSessionView(s.id)))).filter(
     (v): v is CooSessionView => v !== null,
   );
 
+  const lifecycleViews = (
+    await Promise.all(ownedLifecycle.map((s) => buildSessionView(s.id)))
+  ).filter((v): v is CooSessionView => v !== null);
+
   const activeSessions = views.filter(
-    (v) => ["executing", "running", "planning", "waiting_approval"].includes(v.sessionStatus),
+    (v) => ["executing", "running", "planning", "waiting_approval", "needs_founder_review"].includes(v.sessionStatus),
   );
-  const blockedSessions = views.filter((v) => v.sessionStatus === "blocked");
+  const completedSessions = lifecycleViews.filter((v) => v.sessionStatus === "completed");
+  const failedSessions = lifecycleViews.filter(
+    (v) => v.sessionStatus === "failed" || v.sessionStatus === "needs_founder_review",
+  );
+  const blockedSessions = views.filter(
+    (v) => v.sessionStatus === "blocked" || v.sessionStatus === "stalled" || v.sessionStatus === "recovery",
+  );
   const sessionQueue = views.filter((v) => ["pending_coo", "planning"].includes(v.sessionStatus));
 
   const pendingApprovals = (
@@ -104,6 +123,16 @@ export async function getCooDashboard(cooAgentId: string): Promise<CooDashboardD
   ).flat();
 
   const supabase = createSupabaseAdmin();
+
+  const { resolveStaleEscalations } = await import("./escalation-resolver");
+  const { detectArchitectExecutionFailure } = await import("./architect-monitor");
+  await Promise.all(
+    owned.map(async (s) => {
+      await resolveStaleEscalations(s.id).catch(() => 0);
+      await detectArchitectExecutionFailure(s.id).catch(() => false);
+    }),
+  );
+
   const { data: escalationRows } = await supabase
     .from("session_escalations")
     .select("*")
@@ -123,6 +152,8 @@ export async function getCooDashboard(cooAgentId: string): Promise<CooDashboardD
 
   return {
     activeSessions,
+    completedSessions,
+    failedSessions,
     blockedSessions,
     sessionQueue,
     pendingApprovals,

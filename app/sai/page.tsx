@@ -7,6 +7,7 @@ import { AIOperationsPanel } from "@/components/sai/ai-operations-panel";
 import { ExecutionMetricsPanel } from "@/components/sai/execution-metrics";
 import { OperationsMetricsPanel } from "@/components/sai/operations-metrics";
 import { RecentActivityPanel } from "@/components/sai/recent-activity";
+import { SaiDashboardLive } from "@/components/sai/sai-dashboard-live";
 import { SAIBrainBanner } from "@/components/sai/sai-brain-banner";
 import { getAgents } from "@/lib/sai/agents";
 import { getEmployees } from "@/lib/sai/employees";
@@ -115,6 +116,7 @@ export default async function SAIDashboardPage() {
   }
 
   return (
+    <SaiDashboardLive>
     <div className="mx-auto max-w-7xl space-y-8">
       <header>
         <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-purple-300/70">
@@ -148,5 +150,6 @@ export default async function SAIDashboardPage() {
 
       <QuickPanels projects={projects} employees={employees} agents={agentsForPanel} />
     </div>
+    </SaiDashboardLive>
   );
 }

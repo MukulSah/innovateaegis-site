@@ -1,16 +1,24 @@
 import { createSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase/server";
 import { executeAgentWork } from "./agent-executor";
-import { getDefaultAIProvider } from "./ai-providers";
+import { resolveDefaultProviderConfig } from "./ai-provider-resolver";
 import { sendAgentMessage } from "./agent-conversations";
 import { findAgentForRole, getAgents } from "./agents";
 import { getProjectGovernance, getWorkflowApprovals, processApprovalDecision } from "./governance";
 import { getStepGovernanceApproval } from "./sdlc";
 import { routeAfterStepComplete } from "./coo-routing";
-import { closeSession, updateSessionFields } from "./session-manager";
+import { getWorkflowRunById } from "./workflows";
 import { recordActivityFeed } from "./activity-feed";
 import { notifyFounder } from "./notifications";
-import { getPrimarySdlcChain, SDLC_WORKFLOW } from "./sdlc";
+import { getPrimarySdlcChain, SDLC_WORKFLOW, deliverableArtifactName, stepContextArtifactName } from "./sdlc";
+import { finalizeSession, guardRecoveryFromCompletedSession } from "./session-finalization-engine";
+import { updateSessionFields } from "./session-manager";
 import { updateSessionStatePointers } from "./session-state-view";
+import { recordAgentExecutionTrail } from "./agent-execution-trail";
+import { resolveStaleEscalations } from "./escalation-resolver";
+import {
+  getNextPrimaryAgentForStep,
+  pickPrimaryInProgressStep,
+} from "./session-state-engine";
 import type { OrchestrationRun, OrchestrationStatus, WorkflowMode } from "./types";
 
 type OrchestrationRow = {
@@ -112,7 +120,28 @@ export async function advanceOrchestration(
   objective: string,
   projectName: string,
 ): Promise<void> {
+  const { guardOrchestrationAdvance } = await import("./session-orchestration-v2");
+  const guardV2 = await guardOrchestrationAdvance(workflowId);
+  if (!guardV2.allowed) {
+    console.warn(`[orchestration] advance blocked: ${guardV2.reason}`);
+    return;
+  }
+
+  const guard = await guardRecoveryFromCompletedSession(workflowId);
+  if (!guard.allowRecovery) {
+    return;
+  }
+
   const supabase = createSupabaseAdmin();
+  const { isSessionExecutable } = await import("./session-state-engine");
+  if (!(await isSessionExecutable(workflowId))) {
+    await supabase
+      .from("orchestration_runs")
+      .update({ status: "COMPLETED", completed_at: new Date().toISOString() })
+      .eq("workflow_id", workflowId);
+    return;
+  }
+
   const run = await getOrchestrationRun(workflowId);
   if (!run || run.status === "COMPLETED" || run.status === "PAUSED") return;
 
@@ -129,9 +158,23 @@ export async function advanceOrchestration(
   const passiveKeys = new Set(SDLC_WORKFLOW.filter((s) => s.passiveOnly).map((s) => s.key));
   const primaryKeys = new Set(getPrimarySdlcChain().map((s) => s.key));
 
+  const { getParallelEligibleSteps } = await import("./session-orchestration-v2");
+  const parallelKeys = await getParallelEligibleSteps(workflowId);
+  const parallelStep =
+    parallelKeys.length > 0
+      ? stepRows.find(
+          (s) =>
+            parallelKeys.includes(s.step_key as string) &&
+            s.status === "pending" &&
+            !passiveKeys.has(s.step_key as string),
+        )
+      : undefined;
+
+  const primaryInProgress = pickPrimaryInProgressStep(stepRows);
   const currentStep =
-    stepRows.find((s) => s.status === "in_progress" && primaryKeys.has(s.step_key as string)) ??
+    primaryInProgress ??
     stepRows.find((s) => s.status === "in_progress" && !passiveKeys.has(s.step_key as string)) ??
+    parallelStep ??
     stepRows.find((s) => s.status === "pending" && primaryKeys.has(s.step_key as string)) ??
     stepRows.find((s) => s.status === "pending" && !passiveKeys.has(s.step_key as string));
 
@@ -170,11 +213,9 @@ export async function advanceOrchestration(
     return;
   }
 
-  const nextStepIndex = stepRows.findIndex((s) => s.step_key === stepKey) + 1;
-  const nextStep = stepRows[nextStepIndex];
-  const nextAgent = nextStep
-    ? agents.find((a) => a.id === nextStep.assigned_agent_id)
-      ?? findAgentForRole(agents, SDLC_WORKFLOW.find((s) => s.key === nextStep.step_key)?.matchRoles ?? [])
+  const nextPrimary = await getNextPrimaryAgentForStep(workflowId, stepKey);
+  const nextAgent = nextPrimary
+    ? agents.find((a) => a.id === nextPrimary.agentId) ?? null
     : null;
 
   await supabase
@@ -192,6 +233,9 @@ export async function advanceOrchestration(
     nextAgentId: nextAgent?.id ?? null,
     workflowStage: stepKey,
     currentStage: sdlcStep?.label ?? stepKey,
+    currentDeliverable: deliverableArtifactName(stepKey),
+    currentArtifact: stepContextArtifactName(stepKey),
+    sessionStatus: "executing",
   });
 
   const { data: taskRow } = await supabase
@@ -212,6 +256,23 @@ export async function advanceOrchestration(
   }
 
     try {
+    await recordAgentExecutionTrail({
+      sessionId: workflowId,
+      projectId,
+      agentId: agent.id,
+      agentName: agent.name,
+      stepKey,
+      event: "agent_execution_requested",
+    });
+    await recordAgentExecutionTrail({
+      sessionId: workflowId,
+      projectId,
+      agentId: agent.id,
+      agentName: agent.name,
+      stepKey,
+      event: "agent_execution_started",
+    });
+
     await executeAgentWork(agent.id, {
       workflowId,
       projectId,
@@ -220,6 +281,15 @@ export async function advanceOrchestration(
       stepKey,
       taskId: taskRow?.id ?? null,
       receiverAgentId: nextAgent?.id ?? null,
+    });
+
+    await recordAgentExecutionTrail({
+      sessionId: workflowId,
+      projectId,
+      agentId: agent.id,
+      agentName: agent.name,
+      stepKey,
+      event: "agent_execution_completed",
     });
 
     await supabase
@@ -245,6 +315,20 @@ export async function advanceOrchestration(
       );
     } catch {
       // Session chat is best-effort
+    }
+
+    if (stepKey === "knowledge") {
+      try {
+        await finalizeSession(workflowId);
+      } catch (error) {
+        console.error("[orchestration] finalizeSession failed:", error);
+        await notifyFounder(
+          "Session finalization failed",
+          error instanceof Error ? error.message : "Unknown finalization error",
+          "ESCALATION",
+          { severity: "CRITICAL", entityType: "workflow", entityId: workflowId },
+        );
+      }
     }
 
     const { data: sessionRow } = await supabase
@@ -282,6 +366,8 @@ export async function advanceOrchestration(
     } catch {
       // CEO monitoring is best-effort
     }
+
+    await resolveStaleEscalations(workflowId);
 
     const approvalType = getStepGovernanceApproval(stepKey);
     const pendingApprovals = approvalType
@@ -323,11 +409,14 @@ export async function advanceOrchestration(
       }
     }
 
-    if (nextStep) {
-      await supabase
-        .from("workflow_run_steps")
-        .update({ status: "in_progress", started_at: new Date().toISOString() })
-        .eq("id", nextStep.id);
+    if (nextPrimary) {
+      const nextStepRow = stepRows.find((s) => s.step_key === nextPrimary.stepKey);
+      if (nextStepRow) {
+        await supabase
+          .from("workflow_run_steps")
+          .update({ status: "in_progress", started_at: new Date().toISOString() })
+          .eq("id", nextStepRow.id);
+      }
 
       if (run.executionMode === "autonomous" || governanceProfile === "autonomous") {
         await advanceOrchestration(workflowId, projectId, objective, projectName);
@@ -343,16 +432,66 @@ export async function advanceOrchestration(
         .update({ status: "COMPLETED", completed_at: new Date().toISOString() })
         .eq("workflow_id", workflowId);
 
-      await closeSession(workflowId, projectId);
+      try {
+        await finalizeSession(workflowId);
+      } catch (error) {
+        console.error("[orchestration] finalizeSession failed at chain end:", error);
+        await notifyFounder(
+          "Session finalization failed",
+          error instanceof Error ? error.message : "Unknown finalization error",
+          "ESCALATION",
+          { severity: "CRITICAL", entityType: "workflow", entityId: workflowId },
+        );
+      }
 
+      const sessionAfterClose = await getWorkflowRunById(workflowId);
+      if (sessionAfterClose?.sessionStatus === "needs_founder_review") {
+        await notifyFounder(
+          `Session requires founder review: ${objective}`,
+          "Completion validation failed — implementation not verified. Review before closing.",
+          "ESCALATION",
+          { severity: "CRITICAL", entityType: "workflow", entityId: workflowId },
+        );
+      } else {
+        await notifyFounder(
+          `Orchestration complete: ${objective}`,
+          "All agent steps executed — session closed, project memory updated",
+          "WORKFLOW",
+          { severity: "MEDIUM", entityType: "workflow", entityId: workflowId },
+        );
+      }
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Execution failed";
+    if (message === "SESSION_NOT_EXECUTABLE") {
+      await supabase
+        .from("orchestration_runs")
+        .update({ status: "COMPLETED", completed_at: new Date().toISOString() })
+        .eq("workflow_id", workflowId);
+      return;
+    }
+    if (message === "AI_RECOVERY_QUEUED") {
+      await supabase
+        .from("orchestration_runs")
+        .update({ status: "WAITING" })
+        .eq("workflow_id", workflowId);
       await notifyFounder(
-        `Orchestration complete: ${objective}`,
-        "All agent steps executed — session closed, project memory updated",
-        "WORKFLOW",
+        "AI Queue Active",
+        "Execution delayed due to provider throttling. Waiting for retry queue.",
+        "SYSTEM",
         { severity: "MEDIUM", entityType: "workflow", entityId: workflowId },
       );
+      return;
     }
-  } catch {
+    await recordAgentExecutionTrail({
+      sessionId: workflowId,
+      projectId,
+      agentId: agent.id,
+      agentName: agent.name,
+      stepKey,
+      event: "agent_execution_failed",
+      detail: message,
+    }).catch(() => {});
     await supabase
       .from("orchestration_runs")
       .update({ status: "FAILED" })
@@ -398,6 +537,6 @@ export async function getActiveOrchestrations(): Promise<OrchestrationRun[]> {
 }
 
 export async function shouldAutoOrchestrate(): Promise<boolean> {
-  const provider = await getDefaultAIProvider();
+  const provider = await resolveDefaultProviderConfig();
   return Boolean(provider?.apiKey);
 }

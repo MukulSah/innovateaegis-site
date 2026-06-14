@@ -50,6 +50,8 @@ export async function POST(request: Request, { params }: Ctx) {
     });
 
     revalidatePath(`/sai/agents/${agentId}/workspace`);
+    revalidatePath(`/sai/organization/agents/${agentId}/workspace`);
+    revalidatePath("/sai/organization");
     revalidatePath("/sai/execution");
     revalidatePath("/sai");
 

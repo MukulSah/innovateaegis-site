@@ -11,8 +11,10 @@ import { getSessionArtifacts } from "./session-artifacts";
 import { getActiveSession, touchSessionActivity } from "./session-manager";
 import { transitionSessionState } from "./session-state";
 import { SDLC_WORKFLOW } from "./sdlc";
+import { getSessionState, reconcileSessionState } from "./session-state-engine";
 import type { SessionCloseRequest, SessionStatus, WorkflowRun } from "./types";
 import { getWorkflowRunById } from "./workflows";
+import { finalizeSession, guardRecoveryFromCompletedSession, isSessionFinalizationPending } from "./session-finalization-engine";
 
 /** Hours a session must remain stalled before founder may start a new session anyway. */
 export const STALL_OVERRIDE_HOURS = 24;
@@ -47,6 +49,18 @@ export type SessionRecoveryAnalysis = {
   canCreateNewSession: boolean;
   stallOverrideAllowed: boolean;
   pendingCloseRequest: SessionCloseRequest | null;
+  needsFinalization: boolean;
+  hasKnowledgeArchive: boolean;
+  canFinalize: boolean;
+  needsFounderReview: boolean;
+  canFounderAcknowledge: boolean;
+  validationSummary: string | null;
+  validationChecks: { label: string; passed: boolean; detail: string }[];
+  progressLabel: string;
+  sessionBlockers: string[];
+  lastExecutionError: string | null;
+  missingKnowledgeArchive: boolean;
+  canAcknowledgeClose: boolean;
 };
 
 type CloseRequestRow = {
@@ -142,7 +156,8 @@ export async function analyzeSessionRecovery(sessionId: string): Promise<Session
   const supabase = createSupabaseAdmin();
   const agents = await getAgents();
 
-  const [stepsRes, approvals, handoffs, artifacts, health, pendingClose, wfRow] = await Promise.all([
+  const [stepsRes, approvals, handoffs, artifacts, health, pendingClose, wfRow, queueRes, failedEventRes] =
+    await Promise.all([
     supabase
       .from("workflow_run_steps")
       .select("step_key, status, assigned_agent_id, step_label")
@@ -155,8 +170,23 @@ export async function analyzeSessionRecovery(sessionId: string): Promise<Session
     getPendingCloseRequest(sessionId),
     supabase
       .from("workflow_runs")
-      .select("stalled_at, last_activity_at")
+      .select("stalled_at, last_activity_at, completion_validation, session_status")
       .eq("id", sessionId)
+      .maybeSingle(),
+    supabase
+      .from("ai_retry_queue")
+      .select("last_error, status")
+      .eq("workflow_run_id", sessionId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from("ai_execution_events")
+      .select("failure_reason, error_message")
+      .eq("workflow_run_id", sessionId)
+      .eq("success", false)
+      .order("created_at", { ascending: false })
+      .limit(1)
       .maybeSingle(),
   ]);
 
@@ -164,18 +194,12 @@ export async function analyzeSessionRecovery(sessionId: string): Promise<Session
   const agentName = (id: string | null) =>
     id ? agents.find((a) => a.id === id)?.name ?? null : null;
 
-  const inProgress = steps.find((s) => s.status === "in_progress");
-  const currentPending = steps.find((s) => s.status === "pending");
-  const activeStep = inProgress ?? currentPending ?? null;
-
-  const hasCurrentAgent = Boolean(
-    inProgress?.assigned_agent_id ?? (activeStep?.status === "in_progress" && activeStep.assigned_agent_id),
-  );
+  const canonical = await getSessionState(sessionId);
+  const hasCurrentAgent = Boolean(canonical?.currentAgentId);
   const hasPendingApproval = approvals.length > 0 || session.sessionStatus === "waiting_approval";
   const hasPendingHandoff = handoffs.some((h) => h.status === "pending");
 
-  const currentIdx = activeStep ? steps.findIndex((s) => s.step_key === activeStep.step_key) : -1;
-  const nextStep = currentIdx >= 0 ? steps[currentIdx + 1] : null;
+  const activeStepKey = canonical?.workflowStage ?? null;
 
   const lastActivityAt = wfRow.data?.last_activity_at ?? (await getLastActivityAt(sessionId));
   const lastActivityHoursAgo = hoursSince(lastActivityAt);
@@ -192,22 +216,106 @@ export async function analyzeSessionRecovery(sessionId: string): Promise<Session
   }
 
   const isTerminal = TERMINAL_SESSION_STATUSES.includes(session.sessionStatus);
+  const hasKnowledgeArchive = artifacts.some((a) => a.artifactName === "knowledge_archive_v1");
+  const needsFinalization = hasKnowledgeArchive && !isTerminal;
+
+  const inReleaseGrace = await (async () => {
+    const { isInExecutionReleaseGrace } = await import("./execution-release");
+    return isInExecutionReleaseGrace(sessionId);
+  })();
+
   const isStalled =
-    session.sessionStatus === "stalled" ||
-    (!isTerminal &&
-      !hasCurrentAgent &&
-      !hasPendingApproval &&
-      !hasPendingHandoff &&
-      !["pending_ceo", "pending_founder", "pending_coo", "waiting_approval"].includes(
-        session.sessionStatus,
-      ));
+    !needsFinalization &&
+    !inReleaseGrace &&
+    (session.sessionStatus === "stalled" ||
+      (!isTerminal &&
+        !hasCurrentAgent &&
+        !hasPendingApproval &&
+        !hasPendingHandoff &&
+        !["pending_ceo", "pending_founder", "pending_coo", "waiting_approval", "planning", "execution_releasing", "waiting_for_ai_capacity"].includes(
+          session.sessionStatus,
+        )));
 
   const stallOverrideAllowed = isStalled && stalledHours >= STALL_OVERRIDE_HOURS;
 
   let recommendedAction = "Continue monitoring";
-  if (isStalled) recommendedAction = "Recover session — assign missing agent";
-  else if (hasPendingApproval) recommendedAction = "Await founder or governance approval";
-  else if (hasPendingHandoff) recommendedAction = "Complete pending agent handoff";
+  if (isTerminal) {
+    if (session.sessionStatus === "cancelled") recommendedAction = "Session stopped — no further execution";
+    else if (session.sessionStatus === "completed") recommendedAction = "Session completed";
+    else recommendedAction = "Session in terminal state";
+  } else if (session.sessionStatus === "needs_founder_review") {
+    recommendedAction = "Founder review required — acknowledge outcome to close session";
+  } else if (needsFinalization) {
+    recommendedAction = "Run Session Finalization Engine — knowledge archive exists";
+  } else if (session.sessionStatus === "waiting_for_ai_capacity") {
+    recommendedAction = "Waiting for AI capacity — retry queue active";
+  } else if (isStalled) {
+    recommendedAction = "Recover session — assign missing agent";
+  } else if (hasPendingApproval) {
+    recommendedAction = "Await founder or governance approval";
+  } else if (hasPendingHandoff) {
+    recommendedAction = "Complete pending agent handoff";
+  }
+
+  const stepProgress = health.completedSteps
+    ? Math.round((health.completedSteps / Math.max(health.totalSteps, 1)) * 100)
+    : 0;
+
+  const completionValidation = wfRow.data?.completion_validation as
+    | { passed?: boolean; summary?: string; checks?: { label: string; passed: boolean; detail: string }[] }
+    | null
+    | undefined;
+
+  const needsFounderReview =
+    session.sessionStatus === "needs_founder_review" ||
+    (completionValidation?.passed === false && !isTerminal);
+
+  const validationChecks = (completionValidation?.checks ?? []).map((c) => ({
+    label: c.label,
+    passed: c.passed,
+    detail: c.detail,
+  }));
+
+  const validationSummary = completionValidation?.summary ?? null;
+
+  let progressLabel = `${stepProgress}% workflow steps`;
+  if (needsFounderReview) {
+    progressLabel = `${stepProgress}% steps · closure blocked — founder review required`;
+  } else if (needsFinalization) {
+    progressLabel = `${stepProgress}% steps · finalization pending`;
+  } else if (!hasKnowledgeArchive && stepProgress >= 60) {
+    progressLabel = `${stepProgress}% steps · knowledge archive missing`;
+  }
+
+  const lastExecutionError =
+    (failedEventRes.data?.failure_reason as string) ??
+    (failedEventRes.data?.error_message as string) ??
+    (queueRes.data?.last_error as string) ??
+    null;
+
+  const missingKnowledgeArchive = !hasKnowledgeArchive && !isTerminal;
+
+  const sessionBlockers: string[] = [];
+  if (missingKnowledgeArchive && stepProgress >= 50) {
+    sessionBlockers.push("knowledge_archive_v1 not present — cannot finalize");
+  }
+  if (needsFinalization) {
+    sessionBlockers.push("Knowledge archive exists — run finalization to close");
+  }
+  if (needsFounderReview) {
+    sessionBlockers.push("Founder review required before session can close");
+    if (validationSummary) sessionBlockers.push(validationSummary);
+  }
+  if (lastExecutionError) sessionBlockers.push(lastExecutionError);
+  if (hasPendingApproval) sessionBlockers.push("Pending workflow approval blocks progress");
+  if (isStalled && stallReasons.length) sessionBlockers.push(...stallReasons);
+
+  const canAcknowledgeClose =
+    !isTerminal &&
+    (needsFounderReview ||
+      (missingKnowledgeArchive && stepProgress >= 50) ||
+      Boolean(lastExecutionError?.includes("Tool access denied")) ||
+      (isStalled && stepProgress >= 40));
 
   return {
     sessionId,
@@ -221,24 +329,34 @@ export async function analyzeSessionRecovery(sessionId: string): Promise<Session
     hasCurrentAgent,
     hasPendingApproval,
     hasPendingHandoff,
-    currentAgentName: agentName((activeStep?.assigned_agent_id as string) ?? null),
-    nextAgentName: agentName((nextStep?.assigned_agent_id as string) ?? null),
-    currentStepKey: (activeStep?.step_key as string) ?? null,
+    currentAgentName: canonical?.currentAgentName ?? null,
+    nextAgentName: canonical?.nextAgentName ?? null,
+    currentStepKey: activeStepKey,
     lastActivityAt,
     lastActivityHoursAgo,
     stalledAt,
     stalledHours,
-    progress: health.completedSteps
-      ? Math.round((health.completedSteps / Math.max(health.totalSteps, 1)) * 100)
-      : 0,
+    progress: stepProgress,
     artifactCount: artifacts.length,
     recommendedAction,
-    canResume: isStalled || session.sessionStatus === "recovery",
-    canRequestClose: !isTerminal && !pendingClose,
+    canResume: (isStalled || session.sessionStatus === "recovery") && !needsFinalization && !needsFounderReview,
+    canRequestClose: false,
     canForceClose: !isTerminal,
     canCreateNewSession: isTerminal || stallOverrideAllowed,
     stallOverrideAllowed,
     pendingCloseRequest: pendingClose,
+    needsFinalization,
+    hasKnowledgeArchive,
+    canFinalize: needsFinalization || hasKnowledgeArchive,
+    needsFounderReview,
+    canFounderAcknowledge: needsFounderReview && !isTerminal,
+    validationSummary,
+    validationChecks,
+    progressLabel,
+    sessionBlockers,
+    lastExecutionError,
+    missingKnowledgeArchive,
+    canAcknowledgeClose,
   };
 }
 
@@ -310,6 +428,9 @@ export async function assertCanStartNewSession(
 }
 
 export async function detectAndMarkStalled(sessionId: string): Promise<SessionRecoveryAnalysis | null> {
+  const { isInExecutionReleaseGrace } = await import("./execution-release");
+  if (await isInExecutionReleaseGrace(sessionId)) return analyzeSessionRecovery(sessionId);
+
   const analysis = await analyzeSessionRecovery(sessionId);
   if (!analysis || !analysis.isStalled) return analysis;
   if (analysis.sessionStatus === "stalled") return analysis;
@@ -422,6 +543,13 @@ async function resolveMissingAgentForStep(
 }
 
 export async function recoverSession(sessionId: string): Promise<SessionRecoveryAnalysis> {
+  const guard = await guardRecoveryFromCompletedSession(sessionId);
+  if (!guard.allowRecovery) {
+    const updated = await analyzeSessionRecovery(sessionId);
+    if (!updated) throw new Error(guard.reason || "Recovery blocked — session finalized");
+    return updated;
+  }
+
   const session = await getWorkflowRunById(sessionId);
   if (!session) throw new Error("Session not found");
 
@@ -460,6 +588,9 @@ export async function recoverSession(sessionId: string): Promise<SessionRecovery
 
   const targetAgent = agents.find((a) => a.id === resolved.agentId);
 
+  const { healAgentToolForStep } = await import("./tool-permissions");
+  await healAgentToolForStep(resolved.agentId, targetStepKey).catch(() => {});
+
   await supabase
     .from("workflow_runs")
     .update({
@@ -477,6 +608,15 @@ export async function recoverSession(sessionId: string): Promise<SessionRecovery
   );
 
   await touchSessionActivity(sessionId);
+
+  const { reconcileSessionState } = await import("./session-state-engine");
+  await reconcileSessionState(sessionId);
+
+  const { triggerStepExecution } = await import("./step-execution");
+  const { resolveStaleEscalations } = await import("./escalation-resolver");
+  await triggerStepExecution(sessionId).catch(() => {});
+  await resolveStaleEscalations(sessionId).catch(() => {});
+
   const updated = await analyzeSessionRecovery(sessionId);
   if (!updated) throw new Error("Recovery completed but analysis failed");
   return updated;
@@ -586,8 +726,15 @@ export async function approveSessionClose(
     .update({ status: "approved", resolved_at: new Date().toISOString() })
     .eq("id", closeRequestId);
 
-  const { closeSession } = await import("./session-manager");
-  await closeSession(session.id, session.projectId);
+  const { finalizeSession, isSessionFinalizationPending } = await import("./session-finalization-engine");
+  const pendingFinalization = await isSessionFinalizationPending(session.id);
+
+  if (pendingFinalization) {
+    await finalizeSession(session.id);
+  } else {
+    const { closeSession } = await import("./session-manager");
+    await closeSession(session.id, session.projectId);
+  }
 
   await addProjectMemory({
     projectId: session.projectId,
@@ -606,6 +753,12 @@ export async function forceCloseSession(
 ): Promise<void> {
   const session = await getWorkflowRunById(sessionId);
   if (!session) throw new Error("Session not found");
+
+  const pendingFinalization = await isSessionFinalizationPending(sessionId);
+  if (pendingFinalization || session.status === "completed" || session.sessionStatus === "completed") {
+    await finalizeSession(sessionId);
+    return;
+  }
 
   const analysis = await analyzeSessionRecovery(sessionId);
   const artifacts = await getSessionArtifacts(sessionId);
@@ -634,6 +787,9 @@ ${artifacts.map((a) => `- ${a.artifactName ?? a.stepKey}`).join("\n")}
     });
   }
 
+  const { haltSessionExecution } = await import("./session-state-engine");
+  await haltSessionExecution(sessionId, reason, actor.name);
+
   const supabase = createSupabaseAdmin();
   const now = new Date().toISOString();
   await supabase
@@ -660,6 +816,31 @@ ${artifacts.map((a) => `- ${a.artifactName ?? a.stepKey}`).join("\n")}
     summary: reason,
     sourceType: "session",
     sourceId: sessionId,
+  });
+
+  const { recordFinalizationEvent } = await import("./session-finalization-engine");
+  await recordFinalizationEvent(sessionId, session.projectId, "session_closed", {
+    forceClosed: true,
+    closedBy: actor.name,
+    reason,
+    sessionStatus: "cancelled",
+  });
+
+  const { notifyFounder } = await import("./notifications");
+  await notifyFounder(
+    `Session #${session.sessionNumber} stopped`,
+    `${actor.name} force-closed this session. Reason: ${reason}. Status updated across COS.`,
+    "WORKFLOW",
+    { severity: "HIGH", entityType: "workflow", entityId: sessionId },
+  );
+
+  const { recordActivityFeed } = await import("./activity-feed");
+  await recordActivityFeed({
+    actor: actor.name,
+    action: "session_force_closed",
+    targetType: "workflow",
+    targetId: sessionId,
+    description: `Session #${session.sessionNumber} force closed: ${reason}`,
   });
 }
 

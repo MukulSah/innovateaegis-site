@@ -4,6 +4,7 @@ import { getWorkflowApprovals } from "./governance";
 import { getReleases } from "./releases";
 import { getReviews } from "./reviews";
 import { getTasks } from "./tasks";
+import { getBlockedTaskDetails } from "./blocked-task-intelligence";
 import type { ExecutionBoardData } from "./types";
 
 export async function getExecutionBoard(): Promise<ExecutionBoardData> {
@@ -18,6 +19,7 @@ export async function getExecutionBoard(): Promise<ExecutionBoardData> {
     releasesReady: 0,
     workflows: [],
     blockedTaskList: [],
+    blockedTaskDetails: [],
     pendingReviews: [],
     pendingApprovals: [],
     pendingDeliverables: [],
@@ -58,6 +60,8 @@ export async function getExecutionBoard(): Promise<ExecutionBoardData> {
     projectName: (w.projects as unknown as { name: string } | null)?.name ?? null,
   }));
 
+  const blockedTaskDetails = await getBlockedTaskDetails();
+
   return {
     activeWorkflows: workflows.length,
     activeTasks: activeTasks.length,
@@ -69,6 +73,7 @@ export async function getExecutionBoard(): Promise<ExecutionBoardData> {
     releasesReady: readyReleases.length,
     workflows,
     blockedTaskList: blockedTasks.slice(0, 10),
+    blockedTaskDetails: blockedTaskDetails.slice(0, 10),
     pendingReviews: reviews.slice(0, 10),
     pendingApprovals: approvals.slice(0, 10),
     pendingDeliverables: pendingDeliverables.slice(0, 10),

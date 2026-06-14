@@ -3,7 +3,7 @@ import { getDecisions } from "./decisions";
 import { getDocuments } from "./documents";
 import { getWorkflowEvents } from "./workflow-events";
 import { computeWorkflowProgress } from "./workflow-engine";
-import { getSessionStateView } from "./session-state-view";
+import { getSessionState } from "./session-state-engine";
 import { getWorkflowRunById } from "./workflows";
 import { createSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase/server";
 import { getMemories } from "./memories";
@@ -62,7 +62,7 @@ export async function getWorkflowDetail(workflowId: string): Promise<WorkflowDet
   }));
 
   const progress = computeWorkflowProgress(workflow.steps);
-  const sessionState = await getSessionStateView(workflowId);
+  const sessionState = await getSessionState(workflowId);
   const activeAgent = sessionState?.currentAgentName ?? null;
   const blockedSteps = workflow.steps.filter((s) => s.status === "blocked").length;
   const healthScore = Math.max(0, 100 - blockedSteps * 20 - (workflow.status === "blocked" ? 30 : 0));

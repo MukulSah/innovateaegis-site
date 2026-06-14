@@ -6,6 +6,7 @@ import { useState } from "react";
 import { AgentFeed } from "@/components/sai/agent-feed";
 import type { AgentFeedItem } from "@/lib/sai/agent-feed";
 import type { WorkflowDetail } from "@/lib/sai/types";
+import { formatClientApiError, parseJsonResponse } from "@/lib/sai/client-api";
 
 type Props = {
   detail: WorkflowDetail;
@@ -24,23 +25,32 @@ function formatId(id: string) {
 export function WorkflowDetailView({ detail, agentFeed = [], isAdmin }: Props) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
   const { workflow, progress, activeAgent } = detail;
   const currentStep = workflow.steps.find((s) => s.status === "in_progress");
 
   async function completeStep() {
     if (!currentStep) return;
     setLoading(true);
-    const res = await fetch(`/api/sai/workflows/${workflow.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "advance",
-        stepId: currentStep.id,
-        output: "Step completed by owner",
-      }),
-    });
-    if (res.ok) router.refresh();
-    setLoading(false);
+    setError("");
+    const route = `/api/sai/workflows/${workflow.id}`;
+    try {
+      const res = await fetch(route, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "advance",
+          stepId: currentStep.id,
+          output: "Step completed by owner",
+        }),
+      });
+      await parseJsonResponse(res, route);
+      if (res.ok) router.refresh();
+    } catch (err) {
+      setError(formatClientApiError(err, "Workflow API"));
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -61,6 +71,7 @@ export function WorkflowDetailView({ detail, agentFeed = [], isAdmin }: Props) {
             </p>
           )}
         </div>
+        {error && <p className="text-xs text-red-300">{error}</p>}
         {isAdmin && currentStep && workflow.status === "running" && (
           <button
             type="button"

@@ -15,6 +15,8 @@ type SessionRow = {
   session_status: SessionStatus;
   status: string;
   objective: string;
+  completed_at?: string | null;
+  updated_at?: string | null;
 };
 
 export async function getNextSessionNumber(projectId: string): Promise<number> {
@@ -97,10 +99,34 @@ export async function updateSessionFields(
   if (error) throw new Error(error.message);
 }
 
-export async function closeSession(workflowRunId: string, projectId: string): Promise<void> {
+export async function closeSession(
+  workflowRunId: string,
+  projectId: string,
+): Promise<{ closed: boolean; sessionStatus: SessionStatus }> {
   const supabase = createSupabaseAdmin();
   const now = new Date().toISOString();
   const artifacts = await getSessionArtifacts(workflowRunId);
+
+  const { applySessionCompletionValidation } = await import("./session-completion-validation");
+  const validationResult = await applySessionCompletionValidation(workflowRunId);
+
+  if (!validationResult.closed) {
+    await supabase
+      .from("orchestration_runs")
+      .update({ status: "PAUSED", completed_at: null })
+      .eq("workflow_id", workflowRunId);
+
+    await addProjectMemory({
+      projectId,
+      memoryType: "lesson",
+      title: `Session #${workflowRunId.slice(0, 8)} requires founder review`,
+      summary: validationResult.validation.summary,
+      sourceType: "session",
+      sourceId: workflowRunId,
+    });
+
+    return { closed: false, sessionStatus: "needs_founder_review" };
+  }
 
   try {
     const { generateSessionCompletionArtifacts } = await import("./session-completion");
@@ -109,6 +135,32 @@ export async function closeSession(workflowRunId: string, projectId: string): Pr
     // Executive completion artifacts are best-effort
   }
 
+  try {
+    const { data: sessionRow } = await supabase
+      .from("workflow_runs")
+      .select("objective, session_number, delivery_outcome, session_status")
+      .eq("id", workflowRunId)
+      .maybeSingle();
+
+    const { getSessionIntelligence, extractSessionIntelligence } = await import("./session-intelligence");
+    const existing = await getSessionIntelligence(workflowRunId);
+    if (!existing || existing.extractionStatus !== "complete") {
+      await extractSessionIntelligence(workflowRunId, projectId, {
+        objective: sessionRow?.objective ?? "",
+        sessionNumber: sessionRow?.session_number ?? null,
+        deliveryOutcome: validationResult.validation.deliveryOutcome,
+        sessionStatus: sessionRow?.session_status ?? "completed",
+      });
+    }
+  } catch {
+    // Intelligence extraction handled in finalization engine when available
+  }
+
+  await supabase
+    .from("orchestration_runs")
+    .update({ status: "COMPLETED", completed_at: now })
+    .eq("workflow_id", workflowRunId);
+
   await supabase
     .from("workflow_runs")
     .update({
@@ -116,17 +168,31 @@ export async function closeSession(workflowRunId: string, projectId: string): Pr
       session_status: "completed",
       completed_at: now,
       current_stage: "Closed",
+      last_activity_at: now,
     })
     .eq("id", workflowRunId);
+
+  // Phase 3 columns — optional until migration 030 is applied
+  await supabase
+    .from("workflow_runs")
+    .update({ delivery_outcome: validationResult.validation.deliveryOutcome })
+    .eq("id", workflowRunId)
+    .then(({ error }) => {
+      if (error && !error.message.includes("does not exist")) {
+        console.warn("[session-manager] delivery_outcome update skipped:", error.message);
+      }
+    });
 
   await addProjectMemory({
     projectId,
     memoryType: "lesson",
     title: `Session archived (${artifacts.length} artifacts)`,
-    summary: `Session closed with ${artifacts.length} recorded agent turns.`,
+    summary: `${validationResult.validation.deliveryOutcome}. Session closed with ${artifacts.length} recorded agent turns.`,
     sourceType: "session",
     sourceId: workflowRunId,
   });
+
+  return { closed: true, sessionStatus: "completed" };
 }
 
 export async function getAllActiveSessions(): Promise<SessionRow[]> {
@@ -141,4 +207,44 @@ export async function getAllActiveSessions(): Promise<SessionRow[]> {
 
   if (error) throw new Error(error.message);
   return (data ?? []) as SessionRow[];
+}
+
+export async function getSessionsByLifecycle(filters?: {
+  projectId?: string;
+  includeCompleted?: boolean;
+  includeCancelled?: boolean;
+  limit?: number;
+}): Promise<SessionRow[]> {
+  if (!isSupabaseConfigured()) return [];
+
+  const supabase = createSupabaseAdmin();
+  let query = supabase
+    .from("workflow_runs")
+    .select("id, project_id, session_number, executive_sponsor_agent_id, session_owner_agent_id, current_stage, session_status, status, objective, completed_at, updated_at")
+    .order("updated_at", { ascending: false })
+    .limit(filters?.limit ?? 50);
+
+  if (filters?.projectId) query = query.eq("project_id", filters.projectId);
+
+  const statuses: string[] = ["running"];
+  if (filters?.includeCompleted) statuses.push("completed");
+  if (statuses.length === 1) {
+    query = query.eq("status", "running");
+  } else {
+    query = query.in("status", statuses);
+  }
+
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+
+  let rows = (data ?? []) as SessionRow[];
+  if (filters?.includeCancelled) {
+    rows = rows.filter(
+      (r) => r.status === "running" || r.status === "completed" || r.session_status === "cancelled",
+    );
+  } else {
+    rows = rows.filter((r) => r.session_status !== "cancelled");
+  }
+
+  return rows;
 }

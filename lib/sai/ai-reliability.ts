@@ -3,7 +3,7 @@ import { findAgentForRole, getAgents } from "./agents";
 import { recordExecutiveArtifact } from "./executive-artifacts";
 import { postExecutiveMessage, postSystemSessionMessage } from "./executive-session-chat";
 import { getCompanyAISettings } from "./ai-settings";
-import { getDefaultAIProvider } from "./ai-providers";
+import { resolveDefaultProviderConfig } from "./ai-provider-resolver";
 import { getProviderLabel } from "./ai-provider-catalog";
 import type { AIProviderName } from "./types";
 
@@ -73,6 +73,11 @@ export async function recordAIExecutionEvent(input: {
   usedTemplate: boolean;
   timedOut: boolean;
   errorMessage?: string;
+  failureReason?: string;
+  promptLength?: number;
+  estimatedInputTokens?: number;
+  responseTimeMs?: number;
+  timeoutMs?: number;
 }): Promise<void> {
   const supabase = createSupabaseAdmin();
   await supabase.from("ai_execution_events").insert({
@@ -91,6 +96,11 @@ export async function recordAIExecutionEvent(input: {
     used_template: input.usedTemplate,
     timed_out: input.timedOut,
     error_message: input.errorMessage?.slice(0, 2000) ?? null,
+    failure_reason: input.failureReason?.slice(0, 2000) ?? input.errorMessage?.slice(0, 2000) ?? null,
+    prompt_length: input.promptLength ?? null,
+    estimated_input_tokens: input.estimatedInputTokens ?? null,
+    response_time_ms: input.responseTimeMs ?? null,
+    timeout_ms: input.timeoutMs ?? null,
   });
 }
 
@@ -121,7 +131,7 @@ export async function getSessionAIReliability(sessionId: string): Promise<AIReli
   const supabase = createSupabaseAdmin();
   const [settings, defaultProvider, { data: events }] = await Promise.all([
     getCompanyAISettings(),
-    getDefaultAIProvider(),
+    resolveDefaultProviderConfig(),
     supabase
       .from("ai_execution_events")
       .select("success, used_fallback, used_template, attempt_count")
@@ -129,7 +139,7 @@ export async function getSessionAIReliability(sessionId: string): Promise<AIReli
   ]);
 
   const providerName =
-    defaultProvider?.provider.providerName ??
+    defaultProvider?.providerName ??
     (settings.defaultProviderName as AIProviderName | undefined) ??
     "unconfigured";
 
@@ -147,14 +157,14 @@ export async function getGlobalAIReliability(): Promise<AIReliabilitySnapshot> {
   dayStart.setHours(0, 0, 0, 0);
 
   const [defaultProvider, { data: events }] = await Promise.all([
-    getDefaultAIProvider(),
+    resolveDefaultProviderConfig(),
     supabase
       .from("ai_execution_events")
       .select("success, used_fallback, used_template, attempt_count")
       .gte("created_at", dayStart.toISOString()),
   ]);
 
-  const providerName = defaultProvider?.provider.providerName ?? "unconfigured";
+  const providerName = defaultProvider?.providerName ?? "unconfigured";
   const base = aggregateEvents((events as EventRow[]) ?? []);
   return {
     ...base,
@@ -177,8 +187,14 @@ export async function recordTemplateFallback(input: {
   errors: string[];
   timedOut: boolean;
   output: string;
+  promptLength?: number;
+  estimatedInputTokens?: number;
+  responseTimeMs?: number;
+  timeoutMs?: number;
+  failureReason?: string;
 }): Promise<void> {
   const errorSummary = input.errors.join("\n");
+  const failureReason = input.failureReason ?? errorSummary;
 
   await recordAIExecutionEvent({
     workflowRunId: input.workflowRunId,
@@ -195,6 +211,11 @@ export async function recordTemplateFallback(input: {
     usedTemplate: true,
     timedOut: input.timedOut,
     errorMessage: errorSummary,
+    failureReason,
+    promptLength: input.promptLength,
+    estimatedInputTokens: input.estimatedInputTokens,
+    responseTimeMs: input.responseTimeMs,
+    timeoutMs: input.timeoutMs,
   });
 
   const failureContent = `# AI Execution Failure
@@ -211,11 +232,20 @@ ${input.model}
 ## Attempt Count
 ${input.attemptCount}
 
-## Error
-${errorSummary}
+## Prompt Length
+${input.promptLength ?? "unknown"} chars
+
+## Estimated Input Tokens
+${input.estimatedInputTokens ?? "unknown"}
+
+## Response Time
+${input.responseTimeMs ?? "unknown"} ms
 
 ## Timeout
-${input.timedOut ? "Yes" : "No"}
+${input.timeoutMs ? `${input.timeoutMs} ms` : input.timedOut ? "Yes" : "No"}
+
+## Failure Reason
+${failureReason}
 
 ## Session
 ${input.workflowRunId}

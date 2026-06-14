@@ -98,3 +98,16 @@ export function getReportingLabel(agent: Agent, founderName = "Founder"): string
   }
   return agent.reportingAgentName ?? "Unknown agent";
 }
+
+export function findAgentForRole(agents: Agent[], matchRoles: string[]): Agent | null {
+  const active = agents.filter((a) => a.status !== "disabled");
+  for (const match of matchRoles) {
+    const found = active.find(
+      (a) =>
+        a.role.toLowerCase().includes(match.toLowerCase()) ||
+        a.name.toLowerCase().includes(match.toLowerCase()),
+    );
+    if (found) return found;
+  }
+  return active[0] ?? null;
+}

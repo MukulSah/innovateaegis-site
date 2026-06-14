@@ -248,7 +248,12 @@ export function AgentsView({
             </label>
             <label className="block">
               <span className="mb-1 block text-xs text-white/50">Department</span>
-              <input value={form.department} onChange={(e) => setForm({ ...form, department: e.target.value })} className={inputClass} />
+              <select value={form.department} onChange={(e) => setForm({ ...form, department: e.target.value })} className={`${inputClass} bg-[#0d0d14]`}>
+                <option value="">Select department</option>
+                {["Executive", "Product", "Engineering", "QA", "Finance", "Operations", "Sales", "Marketing", "HR", "Legal"].map((d) => (
+                  <option key={d} value={d}>{d}</option>
+                ))}
+              </select>
             </label>
             <label className="block">
               <span className="mb-1 block text-xs text-white/50">Priority Level</span>
@@ -391,11 +396,11 @@ export function AgentsView({
               {agent.approvalRequired && <span>approval req.</span>}
             </div>
             <Link
-              href={`/sai/agents/${agent.id}/workspace`}
-              title="Agent Inbox & Workspace"
+              href={`/sai/organization/agents/${agent.id}/workspace`}
+              title="Agent Designation Workspace"
               className="mt-3 inline-block text-[10px] font-medium text-purple-300 hover:text-purple-200"
             >
-              Inbox & Workspace →
+              Designation Workspace →
             </Link>
             {isAdmin && supabaseConfigured && (
               <div className="mt-3 flex flex-wrap gap-2">

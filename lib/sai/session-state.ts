@@ -3,7 +3,8 @@ import type { SessionStatus } from "./types";
 
 const COO_ALLOWED_TRANSITIONS: Record<string, SessionStatus[]> = {
   pending_coo: ["planning", "stalled"],
-  planning: ["executing", "stalled"],
+  planning: ["execution_releasing", "executing", "stalled"],
+  execution_releasing: ["executing", "planning", "stalled"],
   blocked: ["executing", "stalled"],
   executing: ["waiting_approval", "completed", "failed", "blocked", "stalled"],
   waiting_approval: ["executing", "blocked"],
@@ -31,7 +32,10 @@ export async function transitionSessionState(
   }
 
   const current = session.session_status as SessionStatus;
+  if (current === to) return;
   if (current !== from && !(from === "running" && current === "executing")) {
+    if (from === "planning" && current === "executing" && to === "executing") return;
+    if (from === "planning" && current === "execution_releasing" && to === "executing") return;
     throw new Error(`Session is ${current}, expected ${from} for transition to ${to}`);
   }
 

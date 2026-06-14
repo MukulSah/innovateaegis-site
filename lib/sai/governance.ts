@@ -189,6 +189,40 @@ export async function requestWorkflowApproval(
   input: ApprovalRequestInput,
 ): Promise<{ approval: WorkflowApproval; canProceed: boolean }> {
   const supabase = createSupabaseAdmin();
+
+  if (input.workflowId) {
+    const executable = await (await import("./session-state-engine")).isSessionExecutable(
+      input.workflowId,
+    );
+    if (!executable) {
+      const { data: last } = await supabase
+        .from("workflow_approvals")
+        .select(approvalSelect)
+        .eq("workflow_id", input.workflowId)
+        .eq("approval_type", input.approvalType)
+        .order("requested_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (last) {
+        return { approval: mapApproval(last as ApprovalRow), canProceed: false };
+      }
+      throw new Error("Cannot request approval — session is not active");
+    }
+
+    const { data: pending } = await supabase
+      .from("workflow_approvals")
+      .select(approvalSelect)
+      .eq("workflow_id", input.workflowId)
+      .eq("approval_type", input.approvalType)
+      .eq("status", "pending")
+      .limit(1)
+      .maybeSingle();
+
+    if (pending) {
+      return { approval: mapApproval(pending as ApprovalRow), canProceed: false };
+    }
+  }
+
   const { governanceProfile, workflowMode } = await getProjectGovernance(input.projectId);
 
   const { data: policies } = await supabase
@@ -237,6 +271,19 @@ export async function requestWorkflowApproval(
 
   if (error) throw new Error(error.message);
   const approval = mapApproval(data as ApprovalRow);
+
+  await (await import("./approval-history")).recordApprovalHistory({
+    approvalId: approval.id,
+    workflowId: input.workflowId ?? null,
+    projectId: input.projectId,
+    approvalType: input.approvalType,
+    title: input.title,
+    requestedBy: input.requestedBy,
+    decidedBy: isAuto ? "SAI Auto-Approval Engine" : null,
+    decision: isAuto ? "auto_approved" : "requested",
+    artifactContent: input.artifactContent ?? "",
+    requestedAt: approval.requestedAt,
+  });
 
   const eventType = isAuto ? "auto_approved" : isEscalated ? "escalation_triggered" : "approval_requested";
   const severity = isEscalated ? "critical" : isAuto ? "info" : "medium";
@@ -329,7 +376,31 @@ export async function getWorkflowApprovals(filters?: {
   if (filters?.projectId) query = query.eq("project_id", filters.projectId);
   const { data, error } = await query;
   if (error) throw new Error(error.message);
-  return (data as ApprovalRow[]).map(mapApproval);
+  let approvals = (data as ApprovalRow[]).map(mapApproval);
+
+  if (!filters?.workflowId && filters?.status === "pending") {
+    const workflowIds = [
+      ...new Set(approvals.map((a) => a.workflowId).filter(Boolean)),
+    ] as string[];
+    if (workflowIds.length) {
+      const { data: runs } = await supabase
+        .from("workflow_runs")
+        .select("id, status, session_status")
+        .in("id", workflowIds);
+      const activeIds = new Set(
+        (runs ?? [])
+          .filter(
+            (r) =>
+              r.status === "running" &&
+              !["cancelled", "completed", "failed"].includes(r.session_status as string),
+          )
+          .map((r) => r.id as string),
+      );
+      approvals = approvals.filter((a) => !a.workflowId || activeIds.has(a.workflowId));
+    }
+  }
+
+  return approvals;
 }
 
 export async function getWorkflowApprovalById(id: string): Promise<WorkflowApproval | null> {
@@ -445,6 +516,20 @@ export async function processApprovalDecision(
       content: comments,
     });
   }
+
+  await (await import("./approval-history")).recordApprovalHistory({
+    approvalId: approval.id,
+    workflowId: approval.workflowId,
+    projectId: approval.projectId,
+    approvalType: approval.approvalType,
+    title: approval.title,
+    requestedBy: approval.requestedBy,
+    decidedBy: actor,
+    decision: status as import("./approval-history").ApprovalHistoryDecision,
+    artifactContent: approval.artifactContent,
+    comments: comments || approval.comments,
+    requestedAt: approval.requestedAt,
+  });
 
   const eventType =
     decision === "approved"
@@ -591,28 +676,33 @@ export async function processApprovalDecision(
           .eq("workflow_run_id", approval.workflowId)
           .eq("step_key", "requirements")
           .maybeSingle();
-        if (wf?.session_owner_agent_id) {
-          const { routeAfterStepComplete } = await import("./coo-routing");
-          try {
-            await routeAfterStepComplete({
-              sessionId: approval.workflowId,
-              completedStepKey: "requirements",
-              artifactId: reqArtifact?.id ?? null,
-              artifactName: "requirements_v1",
-              completedByAgentId: (pmStep?.assigned_agent_id as string) ?? wf.session_owner_agent_id,
-              cooAgentId: wf.session_owner_agent_id as string,
-            });
-          } catch {
-            // Routing is best-effort; orchestration resume continues
+
+        const cooAgentId = (wf?.session_owner_agent_id as string) ?? null;
+        const pmAgentId = (pmStep?.assigned_agent_id as string) ?? cooAgentId;
+
+        if (cooAgentId && pmAgentId) {
+          const { completeRequirementsAndRouteToArchitect, reconcileSessionState } =
+            await import("./session-state-engine");
+          const result = await completeRequirementsAndRouteToArchitect({
+            sessionId: approval.workflowId,
+            cooAgentId,
+            pmAgentId,
+            artifactId: reqArtifact?.id ?? null,
+          });
+          if (!result.ok) {
+            console.error(
+              `[governance] requirements routing failed for ${approval.workflowId}:`,
+              result.error,
+            );
+            await reconcileSessionState(approval.workflowId);
           }
+        } else {
+          const { reconcileSessionState } = await import("./session-state-engine");
+          await reconcileSessionState(approval.workflowId);
         }
-        await supabase
-          .from("workflow_runs")
-          .update({ session_status: "executing", workflow_stage: "design" })
-          .eq("id", approval.workflowId);
       }
 
-      if (approval.approvalType !== "strategic_objective") {
+      if (approval.approvalType !== "strategic_objective" && approval.approvalType !== "requirements") {
         const { resumeOrchestration } = await import("./orchestration");
         const { data: wf } = await supabase
           .from("workflow_runs")

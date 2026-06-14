@@ -6,6 +6,7 @@ import { useState } from "react";
 import { ApprovalDebugTrail } from "@/components/sai/approval-debug-trail";
 import type { ApprovalTrail, ApprovalTrailStep } from "@/lib/sai/approval-trail";
 import type { ApprovalComment, WorkflowApproval } from "@/lib/sai/types";
+import { formatClientApiError, parseJsonResponse } from "@/lib/sai/client-api";
 
 type Props = {
   approval: WorkflowApproval;
@@ -24,17 +25,22 @@ export function ApprovalDetailView({ approval, comments, isAdmin, trail }: Props
   async function decide(decision: "approved" | "rejected" | "revision_required" | "escalated", force = false) {
     setLoading(true);
     setError("");
-    const res = await fetch(`/api/sai/approvals/${approval.id}`, {
+    const route = `/api/sai/approvals/${approval.id}`;
+    const res = await fetch(route, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ decision, comments: note, force }),
     });
-    const data = await res.json();
-    if (res.ok) {
-      router.refresh();
-    } else {
-      setError(data.error ?? "Approval failed");
-      if (Array.isArray(data.steps)) setDebugSteps(data.steps);
+    try {
+      const data = await parseJsonResponse<{ error?: string; steps?: ApprovalTrailStep[] }>(res, route);
+      if (res.ok) {
+        router.refresh();
+      } else {
+        setError(data.error ?? "Approval failed");
+        if (Array.isArray(data.steps)) setDebugSteps(data.steps);
+      }
+    } catch (err) {
+      setError(formatClientApiError(err, "Approval API"));
     }
     setLoading(false);
   }
@@ -101,7 +107,7 @@ export function ApprovalDetailView({ approval, comments, isAdmin, trail }: Props
       <div className="flex gap-4 text-xs">
         <Link href="/sai/approvals" className="text-purple-300 hover:text-purple-200">← Approval Center</Link>
         {approval.workflowId && (
-          <Link href={`/sai/workflows/${approval.workflowId}`} className="text-purple-300 hover:text-purple-200">Workflow Detail →</Link>
+          <Link href={`/sai/sessions/${approval.workflowId}`} className="text-purple-300 hover:text-purple-200">Session Detail →</Link>
         )}
       </div>
     </div>

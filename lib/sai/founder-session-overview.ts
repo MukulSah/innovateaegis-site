@@ -7,8 +7,8 @@ import { getProjectDriveDocuments } from "./documentation-pipeline";
 import { getProjectDriveFolders } from "./drive-workspace";
 import { getProjectResources } from "./project-resources";
 import { analyzeSessionRecovery, STALL_OVERRIDE_HOURS } from "./session-recovery";
+import { getSessionState } from "./session-state-engine";
 import type { SessionCloseRequest } from "./types";
-import { getWorkflowRunById } from "./workflows";
 
 export type FounderSessionOverview = {
   sessionId: string;
@@ -58,8 +58,8 @@ export async function getFounderActiveSessionOverview(): Promise<FounderSessionO
   if (active.length === 0) return null;
 
   const primary = active[0];
-  const session = await getWorkflowRunById(primary.id);
-  if (!session) return null;
+  const sessionState = await getSessionState(primary.id);
+  if (!sessionState) return null;
 
   await runCooSessionMonitor(primary.id);
   try {
@@ -68,16 +68,16 @@ export async function getFounderActiveSessionOverview(): Promise<FounderSessionO
   } catch {
     // Idle READY repair is best-effort
   }
-  const [sessionState, monitor, approvals, recovery, readiness, resources, folders, driveDocs, aiReliability] =
+
+  const [monitor, approvals, recovery, readiness, resources, folders, driveDocs, aiReliability] =
     await Promise.all([
-      (await import("./session-state-view")).getSessionStateView(primary.id),
       getCooMonitorSnapshot(primary.id),
       getWorkflowApprovals({ workflowId: primary.id, status: "pending" }),
       analyzeSessionRecovery(primary.id),
-      evaluateExecutionReadiness(session.projectId, primary.id),
-      getProjectResources(session.projectId),
-      getProjectDriveFolders(session.projectId),
-      getProjectDriveDocuments(session.projectId, 1),
+      evaluateExecutionReadiness(sessionState.projectId, primary.id),
+      getProjectResources(sessionState.projectId),
+      getProjectDriveFolders(sessionState.projectId),
+      getProjectDriveDocuments(sessionState.projectId, 1),
       (await import("./ai-reliability")).getSessionAIReliability(primary.id),
     ]);
 
@@ -95,11 +95,11 @@ export async function getFounderActiveSessionOverview(): Promise<FounderSessionO
     ceoAlerts.push("Strategic risk: execution stalled — objective delayed");
     cooAlerts.push("Session appears stalled — recovery recommended");
   }
-  if ((sessionState?.strategicHealth ?? 100) < 70) {
-    ceoAlerts.push(`Strategic health below target: ${sessionState?.strategicHealth ?? 0}%`);
+  if (sessionState.strategicHealth < 70) {
+    ceoAlerts.push(`Strategic health below target: ${sessionState.strategicHealth}%`);
   }
-  if ((sessionState?.executionHealth ?? 0) < 70) {
-    cooAlerts.push(`Execution health low: ${sessionState?.executionHealth ?? 0}%`);
+  if (sessionState.executionHealth < 70) {
+    cooAlerts.push(`Execution health low: ${sessionState.executionHealth}%`);
   }
   if (monitor && monitor.blockedTasks > 0) {
     cooAlerts.push(`${monitor.blockedTasks} blocked task(s)`);
@@ -109,23 +109,23 @@ export async function getFounderActiveSessionOverview(): Promise<FounderSessionO
   }
 
   return {
-    sessionId: primary.id,
-    sessionNumber: session.sessionNumber,
-    projectId: session.projectId,
-    projectName: session.projectName ?? "Project",
-    objective: session.objective,
-    currentAgent: sessionState?.currentAgentName ?? null,
-    nextAgent: sessionState?.nextAgentName ?? null,
-    currentArtifact: sessionState?.currentArtifact ?? null,
-    currentDeliverable: sessionState?.currentDeliverable ?? null,
-    executionStatus: sessionState?.executionReleasedAt ? "Active" : readiness.status,
-    executionHealth: sessionState?.executionHealth ?? 0,
-    strategicHealth: sessionState?.strategicHealth ?? 0,
+    sessionId: sessionState.sessionId,
+    sessionNumber: sessionState.sessionNumber,
+    projectId: sessionState.projectId,
+    projectName: sessionState.projectName,
+    objective: sessionState.objective,
+    currentAgent: sessionState.currentAgentName,
+    nextAgent: sessionState.nextAgentName,
+    currentArtifact: sessionState.currentArtifact,
+    currentDeliverable: sessionState.currentDeliverable,
+    executionStatus: sessionState.executionReleasedAt ? "Active" : readiness.status,
+    executionHealth: sessionState.executionHealth,
+    strategicHealth: sessionState.strategicHealth,
     ceoAlerts,
     cooAlerts,
     pendingApprovals: approvals.length,
     escalations: escalationCount ?? 0,
-    sessionStatus: session.sessionStatus,
+    sessionStatus: sessionState.sessionStatus,
     isStalled: recovery?.isStalled ?? false,
     stallReasons: recovery?.stallReasons ?? [],
     lastActivityLabel: recovery ? formatHoursAgo(recovery.lastActivityHoursAgo) : "—",

@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { SDLC_WORKFLOW } from "@/lib/sai/sdlc";
+import { formatClientApiError, parseJsonResponse } from "@/lib/sai/client-api";
+import { useSaiRealtimeSync } from "@/lib/sai/use-sai-realtime-sync";
 import type { Agent, ControlPanelStats, Project, Task, WorkflowEvent, WorkflowRun } from "@/lib/sai/types";
 
 function workflowProgress(steps: WorkflowRun["steps"]) {
@@ -49,6 +51,15 @@ export function ControlPanel({ stats, agents, tasks, workflows, projects, workfl
   const [error, setError] = useState("");
   const [workflowList, setWorkflowList] = useState(workflows);
 
+  useEffect(() => {
+    setWorkflowList(workflows);
+  }, [workflows]);
+
+  useSaiRealtimeSync(() => router.refresh(), ["workflow_runs", "workflow_run_steps", "tasks"], {
+    debounceMs: 2000,
+    minIntervalMs: 4000,
+  });
+
   const blockedTasks = tasks.filter((t) => t.approvalStatus === "rejected" || t.status === "backlog");
   const busyAgents = agents.filter((a) => (a.activeTaskCount ?? 0) > 0);
 
@@ -58,21 +69,29 @@ export function ControlPanel({ stats, agents, tasks, workflows, projects, workfl
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/sai/workflows", {
+      const route = "/api/sai/sessions/spawn";
+      const res = await fetch(route, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId, objective: objective.trim() }),
+        body: JSON.stringify({
+          projectId,
+          objective: objective.trim(),
+          creationMode: "instant",
+        }),
       });
-      const data = await res.json();
+      const data = await parseJsonResponse<{ error?: string; sessionId?: string }>(res, route);
       if (!res.ok) {
-        setError(data.error || "Failed to launch workflow");
+        setError(data.error || "Failed to launch session");
         return;
       }
-      setWorkflowList((prev) => [data.workflow, ...prev]);
       setObjective("");
-      router.refresh();
-    } catch {
-      setError("Connection failed");
+      if (data.sessionId) {
+        router.push(`/sai/sessions/${data.sessionId}`);
+      } else {
+        router.refresh();
+      }
+    } catch (err) {
+      setError(formatClientApiError(err, "Session spawn"));
     } finally {
       setLoading(false);
     }
@@ -95,8 +114,9 @@ export function ControlPanel({ stats, agents, tasks, workflows, projects, workfl
 
     try {
       if (action === "delete") {
-        const res = await fetch(`/api/sai/workflows/${id}`, { method: "DELETE" });
-        const data = await res.json();
+        const route = `/api/sai/workflows/${id}`;
+        const res = await fetch(route, { method: "DELETE" });
+        const data = await parseJsonResponse<{ error?: string }>(res, route);
         if (!res.ok) {
           setError(data.error || "Failed to delete workflow");
           return;
@@ -111,20 +131,21 @@ export function ControlPanel({ stats, agents, tasks, workflows, projects, workfl
           ? { action, stepId, output: "Approved by owner" }
           : { action };
 
-      const res = await fetch(`/api/sai/workflows/${id}`, {
+      const route = `/api/sai/workflows/${id}`;
+      const res = await fetch(route, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const data = await res.json();
+      const data = await parseJsonResponse<{ error?: string; workflow?: WorkflowRun }>(res, route);
       if (!res.ok) {
         setError(data.error || "Workflow action failed");
         return;
       }
-      setWorkflowList((prev) => prev.map((w) => (w.id === id ? data.workflow : w)));
+      setWorkflowList((prev) => prev.map((w) => (w.id === id ? data.workflow! : w)));
       router.refresh();
-    } catch {
-      setError("Connection failed");
+    } catch (err) {
+      setError(formatClientApiError(err, "Workflow API"));
     } finally {
       setLoading(false);
     }
@@ -169,15 +190,15 @@ export function ControlPanel({ stats, agents, tasks, workflows, projects, workfl
             </div>
           ))}
         </div>
-        <Link href="/sai/approvals" className="mt-3 inline-block text-xs text-purple-300 hover:text-purple-200">
-          Open Approval Center →
+        <Link href="/sai/founder?tab=inbox" className="mt-3 inline-block text-xs text-purple-300 hover:text-purple-200">
+          Open Founder Inbox →
         </Link>
       </section>
 
       <section className="enterprise-glass rounded-xl border border-purple-400/20 p-5">
-        <h2 className="text-sm font-semibold text-white">Launch SDLC Workflow</h2>
+        <h2 className="text-sm font-semibold text-white">Launch Objective</h2>
         <p className="mt-1 text-xs text-white/45">
-          Enter an objective — SAI creates requirements, architecture, tasks, assignments, and tracks delivery.
+          Enter an objective — the company analyzes, plans, assigns agents, and executes autonomously. Tasks are generated automatically.
         </p>
         <form onSubmit={launchWorkflow} className="mt-4 space-y-3">
           <select
@@ -202,7 +223,7 @@ export function ControlPanel({ stats, agents, tasks, workflows, projects, workfl
             disabled={loading || !projects.length}
             className="rounded-lg bg-gradient-to-r from-purple-600 to-cyan-500 px-4 py-2 text-xs font-semibold text-white disabled:opacity-60"
           >
-            {loading ? "Launching…" : "Launch Workflow"}
+            {loading ? "Launching…" : "Launch Objective"}
           </button>
         </form>
         <div className="mt-4 flex flex-wrap items-center gap-1 text-[10px] text-white/40">
@@ -269,10 +290,10 @@ export function ControlPanel({ stats, agents, tasks, workflows, projects, workfl
       </section>
 
       <section>
-        <h2 className="text-sm font-semibold text-white">Mission Control — Active Workflows</h2>
+        <h2 className="text-sm font-semibold text-white">Mission Control — Active Sessions</h2>
         <div className="mt-3 space-y-4">
           {workflowList.length === 0 ? (
-            <p className="text-sm text-white/40">No workflows yet. Launch one above.</p>
+            <p className="text-sm text-white/40">No sessions yet. Launch an objective above.</p>
           ) : (
             workflowList.map((wf) => (
               <article key={wf.id} className="enterprise-glass rounded-xl border border-white/10 p-5">
@@ -288,7 +309,7 @@ export function ControlPanel({ stats, agents, tasks, workflows, projects, workfl
                     </p>
                   </div>
                   <div className="flex flex-col items-end gap-2">
-                    <Link href={`/sai/workflows/${wf.id}`} className="text-[10px] text-purple-300 hover:text-purple-200">
+                    <Link href={`/sai/sessions/${wf.id}`} className="text-[10px] text-purple-300 hover:text-purple-200">
                       View Detail →
                     </Link>
                     <div className="flex flex-wrap justify-end gap-2">

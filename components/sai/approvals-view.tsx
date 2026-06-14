@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { WorkflowApproval, WorkflowApprovalStatus } from "@/lib/sai/types";
+import { formatClientApiError, parseJsonResponse } from "@/lib/sai/client-api";
 
 const statusStyles: Record<string, string> = {
   pending: "border-amber-400/20 bg-amber-500/10 text-amber-300",
@@ -30,17 +31,23 @@ export function ApprovalsView({ initialApprovals, isAdmin }: Props) {
 
   async function decide(id: string, decision: "approved" | "rejected" | "revision_required" | "escalated") {
     setLoading(true);
-    const res = await fetch(`/api/sai/approvals/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ decision }),
-    });
-    const data = await res.json();
-    if (res.ok) {
-      setApprovals((prev) => prev.map((a) => (a.id === id ? data.approval : a)));
-      router.refresh();
+    try {
+      const route = `/api/sai/approvals/${id}`;
+      const res = await fetch(route, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision }),
+      });
+      const data = await parseJsonResponse<{ approval?: WorkflowApproval }>(res, route);
+      if (res.ok && data.approval) {
+        setApprovals((prev) => prev.map((a) => (a.id === id ? data.approval! : a)));
+        router.refresh();
+      }
+    } catch (err) {
+      console.error(formatClientApiError(err, "Approvals API"));
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }
 
   return (

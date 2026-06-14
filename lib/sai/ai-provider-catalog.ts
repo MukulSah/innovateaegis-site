@@ -18,6 +18,7 @@ export const DEFAULT_ENDPOINTS: Partial<Record<AIProviderName, string>> = {
   anthropic: "https://api.anthropic.com/v1",
   google_gemini: "https://generativelanguage.googleapis.com/v1beta",
   mistral: "https://api.mistral.ai/v1",
+  nvidia_nim: "https://integrate.api.nvidia.com/v1",
   openrouter: "https://openrouter.ai/api/v1",
   ollama: "http://localhost:11434/v1",
   lm_studio: "http://localhost:1234/v1",

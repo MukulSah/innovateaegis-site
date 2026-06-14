@@ -11,7 +11,16 @@ export default async function ExecutionPage() {
       contextEngine: "Offline",
     },
     activeSessions: [],
-    stats: { activeWorkflows: 0, blockedTasks: 0, approvalsPending: 0 },
+    completedSessions: [],
+    failedSessions: [],
+    archivedSessions: [],
+    stats: {
+      activeWorkflows: 0,
+      completedWorkflows: 0,
+      failedWorkflows: 0,
+      blockedTasks: 0,
+      approvalsPending: 0,
+    },
   }));
 
   return (

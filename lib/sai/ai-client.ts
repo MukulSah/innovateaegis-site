@@ -1,4 +1,6 @@
 import type { AIProviderName, ConnectionTestResult } from "./types";
+import { estimatePromptTokens } from "./token-estimate";
+import { getProviderLabel } from "./ai-provider-catalog";
 
 export type AICompletionRequest = {
   providerName: AIProviderName;
@@ -9,6 +11,7 @@ export type AICompletionRequest = {
   userPrompt: string;
   temperature?: number;
   maxTokens?: number;
+  timeoutMs?: number;
 };
 
 export type AICompletionResult = {
@@ -36,6 +39,7 @@ async function openAICompatibleCompletion(
   const start = Date.now();
   const base = req.endpoint.replace(/\/$/, "");
   const url = `${base}/chat/completions`;
+  const timeoutMs = req.timeoutMs ?? 45_000;
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -53,7 +57,7 @@ async function openAICompatibleCompletion(
   const response = await fetch(url, {
     method: "POST",
     headers,
-    signal: AbortSignal.timeout(45_000),
+    signal: AbortSignal.timeout(timeoutMs),
     body: JSON.stringify({
       model: req.model,
       messages: [
@@ -87,6 +91,7 @@ async function openAICompatibleCompletion(
 async function anthropicCompletion(req: AICompletionRequest): Promise<AICompletionResult> {
   const start = Date.now();
   const base = req.endpoint.replace(/\/$/, "") || "https://api.anthropic.com/v1";
+  const timeoutMs = req.timeoutMs ?? 45_000;
 
   const response = await fetch(`${base}/messages`, {
     method: "POST",
@@ -95,7 +100,7 @@ async function anthropicCompletion(req: AICompletionRequest): Promise<AICompleti
       "x-api-key": req.apiKey,
       "anthropic-version": "2023-06-01",
     },
-    signal: AbortSignal.timeout(45_000),
+    signal: AbortSignal.timeout(timeoutMs),
     body: JSON.stringify({
       model: req.model,
       max_tokens: req.maxTokens ?? 4096,
@@ -129,11 +134,12 @@ async function geminiCompletion(req: AICompletionRequest): Promise<AICompletionR
   const base =
     req.endpoint.replace(/\/$/, "") || "https://generativelanguage.googleapis.com/v1beta";
   const url = `${base}/models/${req.model}:generateContent?key=${req.apiKey}`;
+  const timeoutMs = req.timeoutMs ?? 45_000;
 
   const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    signal: AbortSignal.timeout(45_000),
+    signal: AbortSignal.timeout(timeoutMs),
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: req.systemPrompt }] },
       contents: [{ role: "user", parts: [{ text: req.userPrompt }] }],
@@ -166,6 +172,7 @@ async function huggingFaceCompletion(req: AICompletionRequest): Promise<AIComple
   const start = Date.now();
   const base = req.endpoint.replace(/\/$/, "") || "https://api-inference.huggingface.co";
   const url = `${base}/models/${req.model}`;
+  const timeoutMs = req.timeoutMs ?? 45_000;
 
   const response = await fetch(url, {
     method: "POST",
@@ -173,7 +180,7 @@ async function huggingFaceCompletion(req: AICompletionRequest): Promise<AIComple
       Authorization: `Bearer ${req.apiKey}`,
       "Content-Type": "application/json",
     },
-    signal: AbortSignal.timeout(45_000),
+    signal: AbortSignal.timeout(timeoutMs),
     body: JSON.stringify({
       inputs: `${req.systemPrompt}\n\n${req.userPrompt}`,
       parameters: { max_new_tokens: req.maxTokens ?? 1024, temperature: req.temperature ?? 0.7 },
@@ -214,13 +221,18 @@ export async function generateAICompletion(
 export async function testAIConnection(
   req: Omit<AICompletionRequest, "systemPrompt" | "userPrompt">,
 ): Promise<ConnectionTestResult> {
+  const systemPrompt = "You are a connection test assistant.";
+  const userPrompt = 'Reply with exactly: "SAI connection successful"';
   const testReq: AICompletionRequest = {
     ...req,
-    systemPrompt: "You are a connection test assistant.",
-    userPrompt: 'Reply with exactly: "SAI connection successful"',
+    systemPrompt,
+    userPrompt,
     maxTokens: 50,
     temperature: 0,
+    timeoutMs: req.timeoutMs ?? 45_000,
   };
+  const promptLength = systemPrompt.length + userPrompt.length;
+  const estimatedInputTokens = estimatePromptTokens(systemPrompt, userPrompt);
 
   try {
     const result = await generateAICompletion(testReq);
@@ -228,15 +240,34 @@ export async function testAIConnection(
       connected: result.content.length > 0,
       latencyMs: result.latencyMs,
       model: req.model,
-      responsePreview: result.content.slice(0, 200),
+      provider: req.providerName,
+      providerLabel: getProviderLabel(req.providerName),
+      responsePreview: result.content.slice(0, 500),
+      promptLength,
+      estimatedInputTokens,
+      inputTokens: result.inputTokens,
+      outputTokens: result.outputTokens,
+      timeoutMs: testReq.timeoutMs,
     };
   } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Connection failed";
+    const sslHint =
+      message.includes("fetch failed") || message.includes("UNABLE_TO_VERIFY")
+        ? " (TLS/SSL error — restart dev server with npm run dev)"
+        : "";
+
     return {
       connected: false,
       latencyMs: 0,
       model: req.model,
+      provider: req.providerName,
+      providerLabel: getProviderLabel(req.providerName),
       responsePreview: "",
-      error: error instanceof Error ? error.message : "Connection failed",
+      promptLength,
+      estimatedInputTokens,
+      timeoutMs: testReq.timeoutMs,
+      error: `${message}${sslHint}`,
     };
   }
 }

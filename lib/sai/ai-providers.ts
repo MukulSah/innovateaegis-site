@@ -23,10 +23,12 @@ type ProviderRow = {
 };
 
 function mapRow(row: ProviderRow): AIProvider {
+  const apiKey = row.api_key_encrypted ? decryptSecret(row.api_key_encrypted) : "";
   return {
     id: row.id,
     providerName: row.provider_name,
     hasApiKey: Boolean(row.api_key_encrypted),
+    keyReadable: Boolean(apiKey),
     endpoint: row.endpoint,
     model: row.model,
     enabled: row.enabled,
@@ -145,7 +147,14 @@ export async function upsertAIProvider(
       .select("*")
       .single();
     if (error) throw new Error(error.message);
-    return mapRow(data as ProviderRow);
+    const provider = mapRow(data as ProviderRow);
+
+    if (input.defaultProvider) {
+      const { updateCompanyAISettings } = await import("./ai-settings");
+      await updateCompanyAISettings({ defaultProviderId: provider.id });
+    }
+
+    return provider;
   }
 
   if (!input.apiKey) {
@@ -161,7 +170,14 @@ export async function upsertAIProvider(
     .single();
 
   if (error) throw new Error(error.message);
-  return mapRow(data as ProviderRow);
+  const provider = mapRow(data as ProviderRow);
+
+  if (input.defaultProvider) {
+    const { updateCompanyAISettings } = await import("./ai-settings");
+    await updateCompanyAISettings({ defaultProviderId: provider.id });
+  }
+
+  return provider;
 }
 
 export async function setDefaultProvider(id: string): Promise<AIProvider> {
@@ -176,7 +192,12 @@ export async function setDefaultProvider(id: string): Promise<AIProvider> {
     .single();
 
   if (error) throw new Error(error.message);
-  return mapRow(data as ProviderRow);
+  const provider = mapRow(data as ProviderRow);
+
+  const { updateCompanyAISettings } = await import("./ai-settings");
+  await updateCompanyAISettings({ defaultProviderId: provider.id });
+
+  return provider;
 }
 
 export async function deleteAIProvider(id: string): Promise<void> {

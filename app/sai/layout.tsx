@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { SAISidebar } from "@/components/sai/sai-sidebar";
+import { SaiRealtimeRefresh } from "@/components/sai/sai-realtime-refresh";
 import { getCurrentUser } from "@/lib/sai/current-user.server";
 
 export const metadata: Metadata = {
@@ -23,7 +24,9 @@ export default async function SAILayout({ children }: { children: React.ReactNod
     <div className="flex h-screen overflow-hidden bg-[#050510]">
       <SAISidebar user={currentUser} />
       <main className="flex-1 overflow-y-auto">
-        <div className="p-6 md:p-8">{children}</div>
+        <SaiRealtimeRefresh>
+          <div className="p-6 md:p-8">{children}</div>
+        </SaiRealtimeRefresh>
       </main>
     </div>
   );

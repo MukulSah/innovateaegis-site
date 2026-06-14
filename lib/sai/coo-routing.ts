@@ -4,8 +4,13 @@ import { recordActivityFeed } from "./activity-feed";
 import { sendAgentMessage } from "./agent-conversations";
 import { postExecutiveMessage } from "./executive-session-chat";
 import { nullableUuid } from "./nullable-uuid";
+import {
+  applyWorkflowTransition,
+  resolveAgentForPrimaryStep,
+} from "./session-state-engine";
 import { getNextPrimaryStage, SDLC_WORKFLOW } from "./sdlc";
-import { updateSessionStatePointers } from "./session-state-view";
+import { resolveStaleEscalations } from "./escalation-resolver";
+import { triggerStepExecution } from "./step-execution";
 import type { SessionHandoff } from "./types";
 
 type HandoffRow = {
@@ -52,6 +57,25 @@ export async function createSessionHandoff(input: {
   reason: string;
 }): Promise<SessionHandoff> {
   const supabase = createSupabaseAdmin();
+
+  let existingQuery = supabase
+    .from("session_handoffs")
+    .select("*")
+    .eq("workflow_run_id", input.workflowRunId)
+    .eq("assigned_to_agent_id", input.assignedToAgentId)
+    .eq("assigned_by_agent_id", input.assignedByAgentId);
+
+  if (input.fromStepKey) existingQuery = existingQuery.eq("from_step_key", input.fromStepKey);
+  if (input.toStepKey) existingQuery = existingQuery.eq("to_step_key", input.toStepKey);
+  if (input.artifactName) existingQuery = existingQuery.eq("artifact_name", input.artifactName);
+
+  const { data: existing } = await existingQuery
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (existing) return mapHandoff(existing as HandoffRow);
+
   const { data, error } = await supabase
     .from("session_handoffs")
     .insert({
@@ -86,6 +110,11 @@ export async function assignNextAgent(input: {
   const nextStage = getNextPrimaryStage(input.fromStepKey);
   const toStepKey =
     input.fromStepKey === "coo_execution" ? "requirements" : (nextStage?.key ?? null);
+
+  if (!toStepKey) {
+    throw new Error(`No next primary stage after ${input.fromStepKey}`);
+  }
+
   const handoff = await createSessionHandoff({
     workflowRunId: input.sessionId,
     artifactId: input.artifactId,
@@ -98,23 +127,9 @@ export async function assignNextAgent(input: {
     reason: input.reason,
   });
 
-  const supabase = createSupabaseAdmin();
-  if (toStepKey) {
-    await supabase
-      .from("workflow_run_steps")
-      .update({ status: "in_progress", started_at: new Date().toISOString(), assigned_agent_id: input.toAgentId })
-      .eq("workflow_run_id", input.sessionId)
-      .eq("step_key", toStepKey);
-
-    await supabase
-      .from("tasks")
-      .update({ assigned_agent_id: input.toAgentId, status: "assigned" })
-      .eq("workflow_run_id", input.sessionId)
-      .eq("workflow_step_key", toStepKey);
-  }
-
   const coo = await getAgentById(input.cooAgentId);
   const target = await getAgentById(input.toAgentId);
+
   if (coo) {
     await postExecutiveMessage(
       coo,
@@ -131,35 +146,27 @@ export async function assignNextAgent(input: {
       message: `COO assigned you: ${input.reason}`,
       messageType: "handoff",
     });
-  }
-
-  await recordActivityFeed({
-    actor: coo?.name ?? "COO",
-    action: "coo_handoff",
-    targetType: "workflow",
-    targetId: input.sessionId,
-    description: `${input.artifactName ?? input.fromStepKey} → ${target?.name ?? "agent"}`,
-  });
-
-  if (toStepKey) {
-    const nextStageAfter = getNextPrimaryStage(toStepKey);
-    await updateSessionStatePointers({
-      sessionId: input.sessionId,
-      currentAgentId: input.toAgentId,
-      nextAgentId: nextStageAfter
-        ? (
-            await supabase
-              .from("workflow_run_steps")
-              .select("assigned_agent_id")
-              .eq("workflow_run_id", input.sessionId)
-              .eq("step_key", nextStageAfter.key)
-              .maybeSingle()
-          ).data?.assigned_agent_id ?? null
-        : null,
-      workflowStage: toStepKey,
-      currentStage: SDLC_WORKFLOW.find((s) => s.key === toStepKey)?.label ?? toStepKey,
+    await recordActivityFeed({
+      actor: coo.name,
+      action: "coo_handoff",
+      targetType: "workflow",
+      targetId: input.sessionId,
+      description: `${input.artifactName ?? input.fromStepKey} → ${target.name}`,
     });
   }
+
+  await applyWorkflowTransition({
+    sessionId: input.sessionId,
+    fromStepKey: input.fromStepKey,
+    toStepKey,
+    currentAgentId: input.toAgentId,
+    completedByAgentId: input.completedByAgentId,
+    currentArtifactId: input.artifactId ?? null,
+    sessionStatus: "executing",
+  });
+
+  await triggerStepExecution(input.sessionId).catch(() => {});
+  await resolveStaleEscalations(input.sessionId);
 
   return handoff;
 }
@@ -197,14 +204,7 @@ export async function routeAfterStepComplete(input: {
   const sdlcStep = SDLC_WORKFLOW.find((s) => s.key === nextStepKey);
   if (!sdlcStep) return null;
 
-  const { data: stepRow } = await supabase
-    .from("workflow_run_steps")
-    .select("assigned_agent_id")
-    .eq("workflow_run_id", input.sessionId)
-    .eq("step_key", nextStepKey)
-    .maybeSingle();
-
-  const toAgentId = stepRow?.assigned_agent_id as string | null;
+  const toAgentId = await resolveAgentForPrimaryStep(input.sessionId, nextStepKey);
   if (!toAgentId) return null;
 
   return assignNextAgent({

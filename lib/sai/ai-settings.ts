@@ -1,9 +1,10 @@
 import { createSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase/server";
-import type { AIModelMode, CompanyAISettings } from "./types";
+import type { AIExecutionMode, AIModelMode, CompanyAISettings } from "./types";
 
 type SettingsRow = {
   id: string;
   model_mode: AIModelMode;
+  execution_mode?: AIExecutionMode;
   default_provider_id: string | null;
   fallback_provider_id?: string | null;
   updated_at: string;
@@ -13,6 +14,7 @@ function mapRow(row: SettingsRow): CompanyAISettings {
   return {
     id: row.id,
     modelMode: row.model_mode,
+    executionMode: row.execution_mode ?? "free",
     defaultProviderId: row.default_provider_id,
     fallbackProviderId: row.fallback_provider_id ?? null,
     updatedAt: row.updated_at,
@@ -24,6 +26,7 @@ export async function getCompanyAISettings(): Promise<CompanyAISettings> {
     return {
       id: "",
       modelMode: "single",
+      executionMode: "free",
       defaultProviderId: null,
       updatedAt: new Date().toISOString(),
     };
@@ -75,6 +78,7 @@ async function enrichSettingsRow(row: SettingsRow): Promise<CompanyAISettings> {
 
 export async function updateCompanyAISettings(updates: {
   modelMode?: AIModelMode;
+  executionMode?: AIExecutionMode;
   defaultProviderId?: string | null;
   fallbackProviderId?: string | null;
 }): Promise<CompanyAISettings> {
@@ -85,6 +89,7 @@ export async function updateCompanyAISettings(updates: {
     .from("company_ai_settings")
     .update({
       model_mode: updates.modelMode ?? current.modelMode,
+      execution_mode: updates.executionMode ?? current.executionMode ?? "free",
       default_provider_id:
         updates.defaultProviderId !== undefined
           ? updates.defaultProviderId

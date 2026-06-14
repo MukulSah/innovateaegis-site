@@ -41,7 +41,7 @@ function minutesSince(iso: string): number {
   return (Date.now() - new Date(iso).getTime()) / (1000 * 60);
 }
 
-/** No CEO escalation noise during session bootstrap or before first deliverable. */
+/** No CEO escalation noise during session bootstrap, release, or before first deliverable. */
 async function isInEscalationGracePeriod(
   sessionId: string,
   workflow: {
@@ -53,6 +53,13 @@ async function isInEscalationGracePeriod(
 ): Promise<boolean> {
   if (!workflow) return true;
   if (minutesSince(workflow.created_at) < ESCALATION_GRACE_MINUTES) return true;
+  if (workflow.session_status === "planning" || workflow.session_status === "execution_releasing") {
+    return true;
+  }
+
+  const { isInExecutionReleaseGrace } = await import("./execution-release");
+  if (await isInExecutionReleaseGrace(sessionId)) return true;
+
   if (!workflow.current_agent_id && !workflow.execution_released_at) return true;
 
   const supabase = createSupabaseAdmin();
@@ -123,7 +130,10 @@ export async function evaluateCeoEscalationRules(sessionId: string): Promise<Ceo
   }
 
   if (workflow.data?.session_status === "stalled" || workflow.data?.session_status === "recovery") {
-    triggers.push("execution_stalled");
+    const { isInExecutionReleaseGrace } = await import("./execution-release");
+    if (!(await isInExecutionReleaseGrace(sessionId))) {
+      triggers.push("execution_stalled");
+    }
   }
 
   return [...new Set(triggers)];
@@ -298,6 +308,26 @@ export async function runCeoSessionMonitor(
       stepKey: "ceo_escalation",
       artifactName: "ceo_escalation_v1",
     });
+
+    try {
+      const { fireAgentAutomation, fireAutomationEvent } = await import("./session-automation");
+      if (triggers.includes("missed_milestone") || strategicHealth.behindSchedule) {
+        await fireAgentAutomation("CEO", "growth_opportunity", {
+          sessionId,
+          objective: session.objective,
+          opportunityTitle: session.objective.slice(0, 80),
+        });
+      }
+      if (triggers.includes("session_blocked") || triggers.includes("execution_stalled")) {
+        await fireAutomationEvent("critical_incident", {
+          sessionId,
+          objective: session.objective,
+          incidentTitle: issue.slice(0, 80),
+        });
+      }
+    } catch {
+      // Automation triggers are best-effort
+    }
   }
 
   return {

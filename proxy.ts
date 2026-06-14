@@ -1,10 +1,21 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { resolveHeadquartersLegacyRedirect } from "@/lib/sai/headquarters";
 
 const AUTH_ROUTES = ["/auth/login", "/auth/register", "/auth/forgot-password"];
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
+
+  const { pathname, search } = request.nextUrl;
+  const legacyRedirect = resolveHeadquartersLegacyRedirect(pathname);
+  if (legacyRedirect) {
+    const target = new URL(legacyRedirect, request.url);
+    if (search && !legacyRedirect.includes("?")) {
+      target.search = search;
+    }
+    return NextResponse.redirect(target);
+  }
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -34,7 +45,6 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { pathname } = request.nextUrl;
   const isAuthRoute = AUTH_ROUTES.some((route) => pathname.startsWith(route));
   const isLegacyLogin = pathname === "/login";
 

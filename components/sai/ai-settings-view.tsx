@@ -12,6 +12,7 @@ import type {
   AIProvider,
   AIProviderName,
   AIModelMode,
+  AIExecutionMode,
   CompanyAISettings,
   ConnectionTestResult,
 } from "@/lib/sai/types";
@@ -34,6 +35,7 @@ type FormState = {
 export function AISettingsView({ providers, settings, isAdmin }: Props) {
   const router = useRouter();
   const [modelMode, setModelMode] = useState<AIModelMode>(settings.modelMode);
+  const [executionMode, setExecutionMode] = useState<AIExecutionMode>(settings.executionMode ?? "free");
   const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>({
@@ -48,11 +50,13 @@ export function AISettingsView({ providers, settings, isAdmin }: Props) {
   const [testing, setTesting] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [editingKeyReadable, setEditingKeyReadable] = useState(false);
 
   const supported = listSupportedProviders();
 
   function openCreate() {
     setEditingId(null);
+    setEditingKeyReadable(false);
     setForm({
       providerName: "openai",
       apiKey: "",
@@ -61,16 +65,18 @@ export function AISettingsView({ providers, settings, isAdmin }: Props) {
       enabled: true,
       defaultProvider: providers.length === 0,
     });
+    setEditingKeyReadable(false);
     setTestResult(null);
     setFormOpen(true);
   }
 
   function openEdit(p: AIProvider) {
     setEditingId(p.id);
+    setEditingKeyReadable(p.keyReadable);
     setForm({
       providerName: p.providerName,
-      apiKey: p.hasApiKey ? "••••••••••••" : "",
-      endpoint: p.endpoint,
+      apiKey: "",
+      endpoint: p.endpoint || getDefaultEndpoint(p.providerName),
       model: p.model,
       enabled: p.enabled,
       defaultProvider: p.defaultProvider,
@@ -91,25 +97,75 @@ export function AISettingsView({ providers, settings, isAdmin }: Props) {
   async function handleTest() {
     setTesting(true);
     setTestResult(null);
+    setError("");
+
+    if (!form.apiKey.trim() && !(editingId && editingKeyReadable)) {
+      setTestResult({
+        connected: false,
+        latencyMs: 0,
+        model: form.model,
+        responsePreview: "",
+        error: "Paste your API key, or save a readable key first.",
+      });
+      setTesting(false);
+      return;
+    }
+
     try {
       const res = await fetch("/api/sai/ai-providers/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          editingId
-            ? { providerId: editingId }
-            : {
-                providerName: form.providerName,
-                apiKey: form.apiKey,
-                endpoint: form.endpoint,
-                model: form.model,
-              },
-        ),
+        body: JSON.stringify({
+          ...(editingId ? { providerId: editingId } : {}),
+          providerName: form.providerName,
+          ...(form.apiKey.trim() ? { apiKey: form.apiKey.trim() } : {}),
+          endpoint: form.endpoint,
+          model: form.model,
+        }),
       });
-      const data = await res.json();
-      setTestResult(data.result ?? { connected: false, error: data.error });
-    } catch {
-      setTestResult({ connected: false, latencyMs: 0, model: form.model, responsePreview: "", error: "Connection failed" });
+
+      let data: { result?: ConnectionTestResult; error?: string } = {};
+      try {
+        data = await res.json();
+      } catch {
+        setTestResult({
+          connected: false,
+          latencyMs: 0,
+          model: form.model,
+          responsePreview: "",
+          error: `Server returned an invalid response (${res.status}). Restart the dev server and try again.`,
+        });
+        return;
+      }
+
+      if (!res.ok) {
+        setTestResult({
+          connected: false,
+          latencyMs: 0,
+          model: form.model,
+          responsePreview: "",
+          error: data.error ?? `Test request failed (${res.status})`,
+        });
+        return;
+      }
+
+      setTestResult(
+        data.result ?? {
+          connected: false,
+          latencyMs: 0,
+          model: form.model,
+          responsePreview: "",
+          error: "No test result returned from server.",
+        },
+      );
+    } catch (err) {
+      setTestResult({
+        connected: false,
+        latencyMs: 0,
+        model: form.model,
+        responsePreview: "",
+        error: err instanceof Error ? err.message : "Connection failed",
+      });
     }
     setTesting(false);
   }
@@ -117,6 +173,16 @@ export function AISettingsView({ providers, settings, isAdmin }: Props) {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!isAdmin) return;
+
+    if (!form.apiKey.trim() && !(editingId && editingKeyReadable)) {
+      setError(
+        editingId
+          ? "Re-enter your API key before saving — the stored key is not readable."
+          : "API key is required.",
+      );
+      return;
+    }
+
     setLoading(true);
     setError("");
 
@@ -162,6 +228,16 @@ export function AISettingsView({ providers, settings, isAdmin }: Props) {
     router.refresh();
   }
 
+  async function saveExecutionMode(mode: AIExecutionMode) {
+    setExecutionMode(mode);
+    await fetch("/api/sai/ai-settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ executionMode: mode }),
+    });
+    router.refresh();
+  }
+
   const inputClass =
     "w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-purple-400/40";
 
@@ -186,6 +262,30 @@ export function AISettingsView({ providers, settings, isAdmin }: Props) {
               }`}
             >
               {mode === "single" ? "Single Provider For Entire Company" : "Allow Per-Agent Models"}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="enterprise-glass rounded-xl border border-cyan-400/20 p-5">
+        <h2 className="text-sm font-semibold text-white">Execution Mode</h2>
+        <p className="mt-1 text-xs text-white/45">
+          Free mode enables the intelligent recovery queue before template fallback. Paid mode retries inline only.
+        </p>
+        <div className="mt-4 flex flex-wrap gap-3">
+          {(["free", "paid"] as AIExecutionMode[]).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              disabled={!isAdmin}
+              onClick={() => saveExecutionMode(mode)}
+              className={`rounded-lg border px-4 py-2 text-xs font-medium capitalize transition-colors ${
+                executionMode === mode
+                  ? "border-cyan-400/40 bg-cyan-500/20 text-white"
+                  : "border-white/10 text-white/50 hover:bg-white/5"
+              }`}
+            >
+              {mode}
             </button>
           ))}
         </div>
@@ -228,10 +328,17 @@ export function AISettingsView({ providers, settings, isAdmin }: Props) {
                 type="password"
                 value={form.apiKey}
                 onChange={(e) => setForm({ ...form, apiKey: e.target.value })}
-                placeholder={editingId ? "Leave blank to keep existing key" : "Enter API key"}
+                placeholder="Paste NVIDIA API key (nvapi-...)"
                 className={inputClass}
+                autoComplete="off"
               />
-              <p className="mt-1 text-[10px] text-white/35">Keys are encrypted at rest. Never displayed after save.</p>
+              <p className="mt-1 text-[10px] text-white/35">
+                {editingId
+                  ? editingKeyReadable
+                    ? "Saved key is readable — Test works without re-entering. Re-enter only to rotate the key."
+                    : "Re-enter your key once to fix encryption, then Save."
+                  : "Keys are encrypted at rest. Never displayed after save."}
+              </p>
             </label>
             <label className="block">
               <span className="mb-1 block text-xs text-white/50">Endpoint</span>
@@ -254,16 +361,46 @@ export function AISettingsView({ providers, settings, isAdmin }: Props) {
           </div>
 
           {testResult && (
-            <div className={`mt-4 rounded-lg border p-3 ${testResult.connected ? "border-emerald-400/30 bg-emerald-500/10" : "border-red-400/30 bg-red-500/10"}`}>
+            <div className={`mt-4 rounded-lg border p-4 ${testResult.connected ? "border-emerald-400/30 bg-emerald-500/10" : "border-red-400/30 bg-red-500/10"}`}>
               <p className={`text-sm font-medium ${testResult.connected ? "text-emerald-300" : "text-red-300"}`}>
-                {testResult.connected ? "Connected" : "Failed"}
+                {testResult.connected ? "Provider Test Passed" : "Provider Test Failed"}
               </p>
+              <dl className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
+                <div>
+                  <dt className="text-white/40">Provider</dt>
+                  <dd className="text-white/80">{testResult.providerLabel ?? testResult.provider ?? form.providerName}</dd>
+                </div>
+                <div>
+                  <dt className="text-white/40">Model</dt>
+                  <dd className="text-white/80">{testResult.model}</dd>
+                </div>
+                <div>
+                  <dt className="text-white/40">Latency</dt>
+                  <dd className="text-white/80">{testResult.latencyMs}ms</dd>
+                </div>
+                <div>
+                  <dt className="text-white/40">Token Estimate</dt>
+                  <dd className="text-white/80">
+                    {testResult.estimatedInputTokens ?? "—"} input
+                    {testResult.outputTokens != null ? ` · ${testResult.outputTokens} output` : ""}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-white/40">Prompt Size</dt>
+                  <dd className="text-white/80">{testResult.promptLength ?? "—"} chars</dd>
+                </div>
+                <div>
+                  <dt className="text-white/40">Timeout</dt>
+                  <dd className="text-white/80">{testResult.timeoutMs ? `${testResult.timeoutMs / 1000}s` : "45s"}</dd>
+                </div>
+              </dl>
               {testResult.connected ? (
-                <p className="mt-1 text-xs text-white/50">
-                  Latency: {testResult.latencyMs}ms · {testResult.responsePreview}
-                </p>
+                <div className="mt-3 rounded border border-white/10 bg-black/20 p-3">
+                  <p className="text-[10px] uppercase tracking-wider text-white/40">Response</p>
+                  <p className="mt-1 whitespace-pre-wrap text-xs text-white/70">{testResult.responsePreview}</p>
+                </div>
               ) : (
-                <p className="mt-1 text-xs text-red-200/80">{testResult.error}</p>
+                <p className="mt-3 text-xs text-red-200/80">{testResult.error}</p>
               )}
             </div>
           )}
@@ -275,7 +412,7 @@ export function AISettingsView({ providers, settings, isAdmin }: Props) {
               Save
             </button>
             <button type="button" onClick={handleTest} disabled={testing} className="rounded-lg border border-cyan-400/30 px-4 py-2 text-xs text-cyan-300 disabled:opacity-60">
-              {testing ? "Testing…" : "Test Connection"}
+              {testing ? "Testing…" : "Test Provider"}
             </button>
             <button type="button" onClick={() => setFormOpen(false)} className="rounded-lg border border-white/10 px-4 py-2 text-xs text-white/70">
               Cancel
@@ -307,7 +444,9 @@ export function AISettingsView({ providers, settings, isAdmin }: Props) {
                 <tr key={p.id} className="border-b border-white/5 last:border-0">
                   <td className="px-4 py-3">
                     <p className="text-white">{getProviderLabel(p.providerName)}</p>
-                    <p className="text-[10px] text-white/35">{p.hasApiKey ? "Key configured" : "No key"}</p>
+                    <p className="text-[10px] text-white/35">
+                      {p.keyReadable ? "Key configured (readable)" : p.hasApiKey ? "Key saved (re-enter to use)" : "No key"}
+                    </p>
                   </td>
                   <td className="px-4 py-3 text-white/70">{p.model}</td>
                   <td className="px-4 py-3">

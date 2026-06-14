@@ -59,10 +59,10 @@ export function CeoWorkspaceDashboard({ dashboard, primarySessionId }: Props) {
             <span className="text-white/45">{primarySession.sessionStatus.replace("_", " ")}</span>
           </div>
           <Link
-            href={`/sai/workflows/${primarySession.id}`}
+            href={`/sai/sessions/${primarySession.id}`}
             className="mt-3 inline-block text-xs text-purple-300 hover:underline"
           >
-            View session →
+            Open in Session Center →
           </Link>
         </section>
       )}
@@ -151,7 +151,7 @@ export function CeoWorkspaceDashboard({ dashboard, primarySessionId }: Props) {
         </section>
 
         <section className="enterprise-glass rounded-xl border border-red-400/20 p-5">
-          <h2 className="text-sm font-semibold text-white">Escalations</h2>
+          <h2 className="text-sm font-semibold text-white">Open Escalations</h2>
           <ul className="mt-3 space-y-2">
             {dashboard.escalations.length === 0 ? (
               <li className="text-sm text-white/40">No open escalations.</li>
@@ -161,6 +161,24 @@ export function CeoWorkspaceDashboard({ dashboard, primarySessionId }: Props) {
                   {e.issue}
                   <span className="ml-2 text-xs text-white/40">
                     Owner: {e.owner} · {e.priority}
+                  </span>
+                </li>
+              ))
+            )}
+          </ul>
+        </section>
+
+        <section className="enterprise-glass rounded-xl border border-emerald-400/20 p-5">
+          <h2 className="text-sm font-semibold text-white">Resolved Escalations</h2>
+          <ul className="mt-3 space-y-2">
+            {(dashboard.resolvedEscalations ?? []).length === 0 ? (
+              <li className="text-sm text-white/40">No recently resolved escalations.</li>
+            ) : (
+              dashboard.resolvedEscalations.map((e) => (
+                <li key={e.id} className="rounded-lg border border-emerald-400/10 p-3 text-sm text-white/60">
+                  {e.issue}
+                  <span className="ml-2 text-xs text-white/35">
+                    Owner: {e.owner} · resolved
                   </span>
                 </li>
               ))
@@ -181,6 +199,28 @@ export function CeoWorkspaceDashboard({ dashboard, primarySessionId }: Props) {
                 <time className="shrink-0 text-xs text-white/35">
                   {new Date(d.createdAt).toLocaleDateString()}
                 </time>
+              </li>
+            ))
+          )}
+        </ul>
+      </section>
+
+      <section className="enterprise-glass rounded-xl border border-emerald-400/20 p-5">
+        <h2 className="text-sm font-semibold text-white">
+          Completed Sessions ({dashboard.completedSessions.length})
+        </h2>
+        <ul className="mt-3 space-y-2">
+          {dashboard.completedSessions.length === 0 ? (
+            <li className="text-sm text-white/40">No completed sponsored sessions yet.</li>
+          ) : (
+            dashboard.completedSessions.map((s) => (
+              <li key={s.id} className="rounded-lg border border-white/5 p-3 text-sm">
+                <Link href={`/sai/sessions/${s.id}`} className="text-white/85 hover:text-purple-300">
+                  #{s.sessionNumber} {s.projectName} — {s.objective}
+                </Link>
+                <p className="mt-1 text-xs text-white/40">
+                  Strategic {s.strategicHealth}% · Execution {s.executionHealth}%
+                </p>
               </li>
             ))
           )}

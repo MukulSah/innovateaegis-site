@@ -13,11 +13,6 @@ import {
   resolveExecutiveAgents,
   updateSessionFields,
 } from "./session-manager";
-import { SDLC_WORKFLOW, SESSION_START_STEP_INDEX } from "./sdlc";
-import { recommendAssignment } from "./task-assignment";
-import { assignAgentsToTask } from "./task-assignments";
-import { createTask } from "./tasks";
-import { getEmployees } from "./employees";
 import { syncAgentGroupMembers } from "./agent-groups";
 import { syncProjectTaskCounts } from "./projects";
 import { addProjectMemory } from "./project-memory";
@@ -27,6 +22,13 @@ import { appendTrailStep } from "./approval-trail";
 import { parseCooExecutionPlan } from "./coo-execution-plan";
 import { nullableUuid, findEmptyUuidFields } from "./nullable-uuid";
 import { transitionSessionState } from "./session-state";
+import {
+  buildSessionPayloadFromTemplate,
+  getTemplateStartStepIndex,
+  provisionWorkflowStepsFromTemplate,
+  resolveTemplateForObjective,
+} from "./session-templates";
+import { resolveOwnershipFromTemplate } from "./session-ownership";
 import type { ProjectObjective, WorkflowRun } from "./types";
 
 async function logTrailStep(
@@ -263,9 +265,8 @@ export async function activateSession(
   }
 
   const supabase = createSupabaseAdmin();
-  const [agents, employees, projectRow, executives] = await Promise.all([
+  const [agents, projectRow, executives] = await Promise.all([
     getAgents(),
-    getEmployees(),
     supabase.from("projects").select("name").eq("id", objective.projectId).maybeSingle(),
     resolveExecutiveAgents(),
   ]);
@@ -275,6 +276,14 @@ export async function activateSession(
   const { workflowMode } = await getProjectGovernance(objective.projectId);
   const sessionNumber = await getNextSessionNumber(objective.projectId);
   const actorName = actor?.name ?? "Founder";
+
+  const sessionTemplate = await resolveTemplateForObjective(objective.title);
+  const ownership = await resolveOwnershipFromTemplate(sessionTemplate, {
+    sponsorUserId: nullableUuid(actor?.userId),
+    sponsorUserName: actorName,
+    agents,
+  });
+  const startStepIndex = getTemplateStartStepIndex(sessionTemplate.stages);
 
   const ceo = findAgentForRole(agents, ["CEO", "Chief Executive"]);
   const coo = findAgentForRole(agents, ["COO", "Chief Operating"]);
@@ -294,23 +303,33 @@ export async function activateSession(
     status: "completed",
   });
 
-  const runPayload = {
-    project_id: objective.projectId,
-    name: `Session #${sessionNumber}`,
-    objective: objective.title,
-    owner: actorName,
-    status: "running",
-    workflow_mode: workflowMode,
-    governance_status: "normal",
-    current_step_index: SESSION_START_STEP_INDEX,
-    session_number: sessionNumber,
-    executive_sponsor_agent_id: nullableUuid(executives.ceo?.id),
-    session_owner_agent_id: coo.id,
-    current_stage: "Requirements",
-    session_status: "pending_coo",
-    strategic_brief: objective.strategicBrief,
-    created_by: nullableUuid(actor?.userId),
-  };
+  const runPayload = buildSessionPayloadFromTemplate(
+    sessionTemplate,
+    {
+      project_id: objective.projectId,
+      name: `Session #${sessionNumber}`,
+      objective: objective.title,
+      owner: actorName,
+      status: "running",
+      workflow_mode: workflowMode,
+      governance_status: "normal",
+      current_step_index: startStepIndex,
+      session_number: sessionNumber,
+      executive_sponsor_agent_id: nullableUuid(ownership.executiveSponsorAgentId ?? executives.ceo?.id),
+      session_owner_agent_id: ownership.sessionOwnerAgentId ?? coo.id,
+      sponsor_user_id: nullableUuid(ownership.sponsorUserId),
+      approver_user_id: nullableUuid(ownership.approverUserId),
+      current_stage: sessionTemplate.stages[startStepIndex]?.label ?? "Requirements",
+      session_status: "pending_coo",
+      strategic_brief: {
+        ...objective.strategicBrief,
+        sessionTemplate: sessionTemplate.template.slug,
+        sessionType: sessionTemplate.template.sessionType,
+      },
+      created_by: nullableUuid(actor?.userId),
+    },
+    { creationMode: "instant", sponsorUserId: nullableUuid(actor?.userId) },
+  );
 
   const emptyUuid = findEmptyUuidFields(runPayload, [
     "project_id",
@@ -412,8 +431,8 @@ export async function activateSession(
   });
 
   await updateSessionFields(run.id, {
-    currentStage: readiness.ready ? "Requirements" : "Execution Readiness",
-    sessionStatus: readiness.ready ? "executing" : "planning",
+    currentStage: readiness.ready ? "Execution Release" : "Execution Readiness",
+    sessionStatus: "planning",
     strategicBrief: {
       ...objective.strategicBrief,
       cooPlan,
@@ -458,65 +477,14 @@ export async function activateSession(
     // CEO monitoring is best-effort at activation
   }
 
-  for (let i = 0; i < SDLC_WORKFLOW.length; i++) {
-    const step = SDLC_WORKFLOW[i];
-    const roleAgent = findAgentForRole(agents, step.matchRoles);
-    const recommendation = recommendAssignment(
-      {
-        title: step.taskTitle,
-        description: step.taskDescription,
-        workflowStepKey: step.key,
-        projectId: objective.projectId,
-      },
-      agents,
-      employees,
-    );
-    const assignedAgentId = roleAgent?.id ?? recommendation.agentId;
-    const isPreDone = step.skipOnSessionActivate || step.passiveOnly;
-    const isFirstActive = i === SESSION_START_STEP_INDEX;
-
-    await supabase.from("workflow_run_steps").insert({
-      workflow_run_id: run.id,
-      step_key: step.key,
-      step_label: step.label,
-      step_order: i,
-      assigned_agent_id: assignedAgentId,
-      status: isPreDone ? "completed" : isFirstActive ? "in_progress" : "pending",
-      started_at: isPreDone || isFirstActive ? new Date().toISOString() : null,
-      completed_at: isPreDone ? new Date().toISOString() : null,
-    });
-
-    if (!isPreDone) {
-      const task = await createTask({
-        projectId: objective.projectId,
-        title: step.taskTitle,
-        description: `${step.taskDescription}\n\nObjective: ${objective.title}`,
-        priority: i < SESSION_START_STEP_INDEX + 3 ? "high" : "medium",
-        dependencies: [],
-        acceptanceCriteria: [`Complete ${step.label}`],
-        objectiveId,
-        assignedAgentId,
-        assignedEmployeeId: recommendation.employeeId,
-        status: step.taskStatus,
-        evidence: "",
-        comments: [recommendation.reason],
-        approvalStatus: step.governanceApproval || step.approvalType ? "pending" : "none",
-        workflowRunId: run.id,
-        workflowStepKey: step.key,
-      });
-
-      await supabase.from("project_deliverables").insert({
-        project_id: objective.projectId,
-        workflow_run_id: run.id,
-        workflow_step_key: step.key,
-        deliverable_type: step.deliverableType,
-        title: step.deliverableTitle,
-        content: `Pending: ${step.taskDescription}`,
-      });
-
-      await assignAgentsToTask(task.id, step.key, agents);
-    }
-  }
+  await provisionWorkflowStepsFromTemplate({
+    workflowRunId: run.id,
+    projectId: objective.projectId,
+    objectiveId,
+    objectiveTitle: objective.title,
+    template: sessionTemplate,
+    agents,
+  });
 
   await addProjectMemory({
     projectId: objective.projectId,
@@ -543,7 +511,6 @@ export async function activateSession(
         projectId: objective.projectId,
         cooAgentId: coo.id,
       });
-      await transitionSessionState(run.id, "planning", "executing", coo.id);
       await logTrailStep(trailId, {
         key: "execution_released",
         label: "Execution Release Completed",
@@ -551,6 +518,7 @@ export async function activateSession(
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Execution release failed";
+      await updateSessionFields(run.id, { sessionStatus: "planning" });
       await logTrailStep(trailId, {
         key: "execution_release_failed",
         label: "Execution Release Failed",

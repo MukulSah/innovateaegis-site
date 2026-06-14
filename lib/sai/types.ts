@@ -113,15 +113,37 @@ export type SessionStatus =
   | "pending_founder"
   | "pending_coo"
   | "planning"
+  | "execution_releasing"
   | "running"
   | "executing"
   | "waiting_approval"
   | "blocked"
   | "stalled"
   | "recovery"
+  | "needs_founder_review"
+  | "waiting_for_ai_capacity"
   | "completed"
   | "failed"
   | "cancelled";
+
+export type SessionType =
+  | "founder_objective"
+  | "product_development"
+  | "bug_fix"
+  | "incident"
+  | "research"
+  | "sales"
+  | "marketing"
+  | "operations"
+  | "duty"
+  | "automation"
+  | "customer_request"
+  | "documentation_only"
+  | "planning"
+  | "architecture"
+  | "development"
+  | "deployment"
+  | "production_fix";
 
 export type SessionCloseRequestStatus =
   | "pending_ceo"
@@ -334,6 +356,19 @@ export interface AgentWorkload {
   capacityStatus: AgentCapacityStatus;
 }
 
+export type BlockedTaskDetail = {
+  taskId: string;
+  taskName: string;
+  ownerAgent: string | null;
+  blockReason: string;
+  dependency: string | null;
+  waitingOn: string | null;
+  recommendedAction: string;
+  workflowRunId: string | null;
+  workflowStepKey: string | null;
+  status: string;
+};
+
 export interface ExecutionBoardData {
   activeWorkflows: number;
   activeTasks: number;
@@ -345,6 +380,7 @@ export interface ExecutionBoardData {
   releasesReady: number;
   workflows: { id: string; name: string; objective: string; projectName: string | null }[];
   blockedTaskList: Task[];
+  blockedTaskDetails: BlockedTaskDetail[];
   pendingReviews: Review[];
   pendingApprovals: WorkflowApproval[];
   pendingDeliverables: Deliverable[];
@@ -454,6 +490,7 @@ export interface AIProvider {
   id: string;
   providerName: AIProviderName;
   hasApiKey: boolean;
+  keyReadable: boolean;
   endpoint: string;
   model: string;
   enabled: boolean;
@@ -462,15 +499,48 @@ export interface AIProvider {
   updatedAt: string;
 }
 
+export type AIExecutionMode = "free" | "paid";
+
 export interface CompanyAISettings {
   id: string;
   modelMode: AIModelMode;
+  executionMode?: AIExecutionMode;
   defaultProviderId: string | null;
   defaultProviderName?: string | null;
   fallbackProviderId?: string | null;
   fallbackProviderName?: string | null;
   updatedAt: string;
 }
+
+export type FounderChatActionType =
+  | "retry_step"
+  | "resume_session"
+  | "reconcile_state"
+  | "force_finalize"
+  | "assign_agent"
+  | "pause_session"
+  | "close_session"
+  | "escalate_coo"
+  | "escalate_ceo";
+
+export type FounderChatActionStatus =
+  | "pending_approval"
+  | "approved"
+  | "rejected"
+  | "executed"
+  | "failed";
+
+export type AIInfrastructureStatus = {
+  executionMode: AIExecutionMode;
+  provider: string | null;
+  model: string | null;
+  queueStatus: "idle" | "queued" | "waiting" | "processing" | "template_fallback";
+  queueMessage: string | null;
+  retryCount: number;
+  templateUsage: number;
+  providerHealth: string;
+  nextAttemptAt: string | null;
+};
 
 export type AIReliabilityStatus = {
   provider: string;
@@ -610,7 +680,14 @@ export interface ConnectionTestResult {
   connected: boolean;
   latencyMs: number;
   model: string;
+  provider?: string;
+  providerLabel?: string;
   responsePreview: string;
+  promptLength?: number;
+  estimatedInputTokens?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  timeoutMs?: number;
   error?: string;
 }
 
@@ -1120,8 +1197,13 @@ export interface ExecutionCenterData {
     contextEngine: string;
   };
   activeSessions: ExecutionCenterSession[];
+  completedSessions: ExecutionCenterSession[];
+  failedSessions: ExecutionCenterSession[];
+  archivedSessions: ExecutionCenterSession[];
   stats: {
     activeWorkflows: number;
+    completedWorkflows: number;
+    failedWorkflows: number;
     blockedTasks: number;
     approvalsPending: number;
   };
@@ -1228,6 +1310,172 @@ export interface ControlPanelStats {
   waitingForFounder: number;
   waitingForRevision: number;
   governanceHealth: number;
+}
+
+export type AgentHandlingStatus = "running" | "waiting" | "review" | "completed" | "idle";
+
+export type OrganizationSection =
+  | "agent-center"
+  | "active-sessions"
+  | "agent-workspaces"
+  | "departments"
+  | "employees"
+  | "capacity"
+  | "structure";
+
+export type SessionCenterSection =
+  | "dashboard"
+  | "registry-all"
+  | "registry-active"
+  | "registry-scheduled"
+  | "registry-approval"
+  | "registry-completed"
+  | "registry-archived"
+  | "registry-cancelled"
+  | "templates"
+  | "duties"
+  | "automation"
+  | "agents"
+  | "intelligence"
+  | "analytics"
+  | "settings";
+
+export type SessionCreationMode = "instant" | "scheduled" | "recurring" | "triggered" | "duty" | "automation";
+
+export type SessionLifecycleStage =
+  | "draft"
+  | "planning"
+  | "ready"
+  | "executing"
+  | "review"
+  | "approval"
+  | "knowledge_capture"
+  | "completed"
+  | "archived"
+  | "cancelled";
+
+export interface SessionTemplateDefinition {
+  id: string;
+  label: string;
+  description: string;
+  sessionType: SessionType;
+  defaultPriority: PriorityLevel;
+  suggestedAgents: string[];
+}
+
+export interface SessionDutyDefinition {
+  id: string;
+  agentRole: string;
+  title: string;
+  cadence: string;
+  nextRun: string | null;
+  status: "active" | "paused" | "pending";
+  sessionTemplateId: string;
+}
+
+export interface SessionAutomationRule {
+  id: string;
+  label: string;
+  type: "schedule" | "event" | "agent";
+  trigger: string;
+  action: string;
+  status: "active" | "paused" | "draft";
+  lastTriggered: string | null;
+}
+
+export interface SessionCenterDashboardMetrics {
+  activeSessions: number;
+  awaitingApproval: number;
+  blockedSessions: number;
+  overdueSessions: number;
+  completedThisWeek: number;
+  scheduledSessions: number;
+  automationActive: number;
+  knowledgeCaptured: number;
+  executionHealth: number;
+  completionRate: number;
+  agentActivityToday: number;
+}
+
+export interface AgentLiveSession {
+  sessionId: string | null;
+  sessionNumber: number | null;
+  projectId: string | null;
+  projectName: string | null;
+  objective: string | null;
+  currentStage: string | null;
+  workflowStage: string | null;
+  handlingStatus: AgentHandlingStatus;
+  currentStep: string | null;
+  nextStep: string | null;
+  progressPercent: number;
+  healthScore: number | null;
+  cooReviewPending: number;
+  cooReviewLabel: string | null;
+}
+
+export interface OrganizationAgentRow {
+  agent: Agent;
+  liveSession: AgentLiveSession;
+  workload: AgentWorkload;
+  metrics: AgentMetrics | null;
+  aiHealth: HealthStatus;
+}
+
+export interface OrganizationDepartmentSnapshot {
+  name: string;
+  agentCount: number;
+  employeeCount: number;
+  activeSessions: number;
+  assignedAgents: number;
+  healthScore: number;
+  healthStatus: HealthStatus;
+}
+
+export interface OrganizationActionItem {
+  id: string;
+  type: "session" | "approval" | "handoff" | "decision" | "completion" | "activity";
+  title: string;
+  description: string;
+  sessionId: string | null;
+  sessionNumber: number | null;
+  projectName: string | null;
+  agentName: string | null;
+  status: string;
+  timestamp: string;
+  href: string | null;
+}
+
+export interface OrganizationSessionWorkspace {
+  id: string;
+  sessionNumber: number | null;
+  projectName: string;
+  objective: string;
+  bucket: string;
+  sessionStatus: string;
+  executionHealth: number;
+  currentAgentName: string | null;
+  href: string;
+}
+
+export interface OrganizationHeadquartersData {
+  dashboard: {
+    totalAgents: number;
+    activeAgents: number;
+    idleAgents: number;
+    assignedAgents: number;
+    departmentCoverage: number;
+    aiHealthScore: number;
+    activeSessions: number;
+  };
+  agents: OrganizationAgentRow[];
+  departments: OrganizationDepartmentSnapshot[];
+  activeSessions: ExecutionCenterSession[];
+  sessionWorkspaces: OrganizationSessionWorkspace[];
+  actionCenter: OrganizationActionItem[];
+  employees: Employee[];
+  projects: Project[];
+  founderName: string;
 }
 
 /** @deprecated Use CompanyMemory */

@@ -1,8 +1,8 @@
 import { generateAICompletion } from "./ai-client";
 import { recordAIUsage } from "./ai-usage";
+import { estimatePromptTokens } from "./token-estimate";
 import type { AIProviderName, ReasoningLevel } from "./types";
 
-export const AI_RETRY_TIMEOUT_MS = 45_000;
 const RETRY_DELAYS_MS = [0, 5_000, 10_000] as const;
 
 export type AgentModelConfig = {
@@ -25,10 +25,18 @@ export type RetryExecutionInput = {
   agentId: string;
   workflowId?: string | null;
   runtimeSessionId: string;
+  timeoutMs: number;
   onStatusMessage?: (message: string) => Promise<void>;
 };
 
-export type RetryExecutionSuccess = {
+export type RetryDiagnostics = {
+  promptLength: number;
+  estimatedInputTokens: number;
+  responseTimeMs: number;
+  timeoutMs: number;
+};
+
+export type RetryExecutionSuccess = RetryDiagnostics & {
   ok: true;
   content: string;
   inputTokens: number;
@@ -40,13 +48,14 @@ export type RetryExecutionSuccess = {
   errors: string[];
 };
 
-export type RetryExecutionFailure = {
+export type RetryExecutionFailure = RetryDiagnostics & {
   ok: false;
   attemptCount: number;
   errors: string[];
   lastProvider: string;
   lastModel: string;
   timedOut: boolean;
+  failureReason: string;
 };
 
 export type RetryExecutionResult = RetryExecutionSuccess | RetryExecutionFailure;
@@ -65,11 +74,27 @@ function isTimeoutError(error: unknown): boolean {
   );
 }
 
+function buildDiagnostics(
+  systemPrompt: string,
+  userPrompt: string,
+  timeoutMs: number,
+  responseTimeMs: number,
+): RetryDiagnostics {
+  const promptLength = systemPrompt.length + userPrompt.length;
+  return {
+    promptLength,
+    estimatedInputTokens: estimatePromptTokens(systemPrompt, userPrompt),
+    responseTimeMs,
+    timeoutMs,
+  };
+}
+
 async function attemptCompletion(
   config: AgentModelConfig,
   systemPrompt: string,
   userPrompt: string,
-): Promise<{ content: string; inputTokens: number; outputTokens: number }> {
+  timeoutMs: number,
+): Promise<{ content: string; inputTokens: number; outputTokens: number; latencyMs: number }> {
   const result = await generateAICompletion({
     providerName: config.providerName,
     apiKey: config.apiKey,
@@ -79,6 +104,7 @@ async function attemptCompletion(
     userPrompt,
     temperature: config.temperature,
     maxTokens: config.maxTokens,
+    timeoutMs,
   });
   if (!result.content?.trim()) {
     throw new Error("Empty AI response");
@@ -98,13 +124,37 @@ export async function executeWithRetryPolicy(
   let lastProvider = input.primary.providerName;
   let lastModel = input.primary.model;
   let timedOut = false;
+  const startedAt = Date.now();
+  const baseDiagnostics = buildDiagnostics(
+    input.systemPrompt,
+    input.userPrompt,
+    input.timeoutMs,
+    0,
+  );
 
   const tryConfig = async (
     config: AgentModelConfig,
     label: string,
   ): Promise<RetryExecutionSuccess | null> => {
     try {
-      const result = await attemptCompletion(config, input.systemPrompt, input.userPrompt);
+      const result = await attemptCompletion(
+        config,
+        input.systemPrompt,
+        input.userPrompt,
+        input.timeoutMs,
+      );
+      console.info("[ai-retry-engine] execution success", {
+        provider: config.providerName,
+        model: config.model,
+        endpoint: config.endpoint,
+        timeoutMs: input.timeoutMs,
+        latencyMs: result.latencyMs,
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
+        promptLength: input.systemPrompt.length + input.userPrompt.length,
+        agentId: input.agentId,
+        workflowId: input.workflowId,
+      });
       return {
         ok: true,
         content: result.content,
@@ -115,9 +165,26 @@ export async function executeWithRetryPolicy(
         attemptCount,
         usedFallback: label === "fallback",
         errors,
+        ...buildDiagnostics(
+          input.systemPrompt,
+          input.userPrompt,
+          input.timeoutMs,
+          Date.now() - startedAt,
+        ),
       };
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
+      console.warn("[ai-retry-engine] execution attempt failed", {
+        label,
+        provider: config.providerName,
+        model: config.model,
+        endpoint: config.endpoint,
+        timeoutMs: input.timeoutMs,
+        promptLength: input.systemPrompt.length + input.userPrompt.length,
+        agentId: input.agentId,
+        workflowId: input.workflowId,
+        error: msg,
+      });
       errors.push(`${label}: ${msg}`);
       if (isTimeoutError(error)) timedOut = true;
       lastProvider = config.providerName;
@@ -172,6 +239,10 @@ export async function executeWithRetryPolicy(
     }
   }
 
+  const failureReason = timedOut
+    ? `Timed out after ${input.timeoutMs}ms`
+    : errors[errors.length - 1] ?? "AI execution failed";
+
   return {
     ok: false,
     attemptCount,
@@ -179,5 +250,8 @@ export async function executeWithRetryPolicy(
     lastProvider,
     lastModel,
     timedOut,
+    failureReason,
+    ...baseDiagnostics,
+    responseTimeMs: Date.now() - startedAt,
   };
 }

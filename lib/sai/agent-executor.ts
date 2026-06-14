@@ -1,13 +1,17 @@
 import { createSupabaseAdmin } from "@/lib/supabase/server";
 import { getAgentAIConfig } from "./agent-ai-config";
-import { getCompanyAISettings } from "./ai-settings";
 import { executeWithRetryPolicy, type AgentModelConfig } from "./ai-retry-engine";
 import {
   artifactNameForStep,
   recordAIExecutionEvent,
   recordTemplateFallback,
 } from "./ai-reliability";
-import { getDefaultAIProvider, getProviderWithKey } from "./ai-providers";
+import { getAgentTimeoutMs } from "./agent-timeouts";
+import { estimatePromptTokens, estimateTokens } from "./token-estimate";
+import {
+  formatProviderDiagnostics,
+  resolveAIProviderForAgent,
+} from "./ai-provider-resolver";
 import { postSystemSessionMessage } from "./executive-session-chat";
 import { getAgentById } from "./agents";
 import { sendAgentMessage } from "./agent-conversations";
@@ -73,57 +77,30 @@ export type AgentExecutionContext = {
   receiverAgentId?: string | null;
 };
 
-function toModelConfig(
-  providerData: { provider: { providerName: AgentModelConfig["providerName"]; endpoint: string; model: string }; apiKey: string },
-  agentConfig: Awaited<ReturnType<typeof getAgentAIConfig>>,
-): AgentModelConfig {
-  return {
-    providerName: providerData.provider.providerName,
-    apiKey: providerData.apiKey,
-    endpoint: providerData.provider.endpoint,
-    model: agentConfig?.model ?? providerData.provider.model,
+async function resolveModelConfigs(agentId: string): Promise<{
+  primary: AgentModelConfig | null;
+  fallback: AgentModelConfig | null;
+  diagnostics: string;
+}> {
+  const { primary, fallback } = await resolveAIProviderForAgent(agentId);
+  const agentConfig = await getAgentAIConfig(agentId);
+
+  const toConfig = (resolved: NonNullable<typeof primary>): AgentModelConfig => ({
+    providerName: resolved.providerName,
+    apiKey: resolved.apiKey,
+    endpoint: resolved.endpoint,
+    model: agentConfig?.model ?? resolved.model,
     temperature: agentConfig?.temperature ?? 0.7,
     maxTokens: agentConfig?.maxTokens ?? 4096,
     reasoningLevel: (agentConfig?.reasoningLevel ?? "standard") as ReasoningLevel,
     systemPrompt: agentConfig?.systemPrompt ?? "",
+  });
+
+  return {
+    primary: primary ? toConfig(primary) : null,
+    fallback: fallback ? toConfig(fallback) : null,
+    diagnostics: formatProviderDiagnostics(primary),
   };
-}
-
-async function resolveModelConfigs(agentId: string): Promise<{
-  primary: AgentModelConfig | null;
-  fallback: AgentModelConfig | null;
-}> {
-  const [settings, agentConfig, defaultProvider] = await Promise.all([
-    getCompanyAISettings(),
-    getAgentAIConfig(agentId),
-    getDefaultAIProvider(),
-  ]);
-
-  let primary: AgentModelConfig | null = null;
-
-  if (settings.modelMode === "per_agent" && agentConfig?.enabled && agentConfig.providerId) {
-    const providerData = await getProviderWithKey(agentConfig.providerId);
-    if (providerData?.provider.enabled && providerData.apiKey) {
-      primary = toModelConfig(providerData, agentConfig);
-    }
-  }
-
-  if (!primary && defaultProvider?.apiKey) {
-    primary = toModelConfig(defaultProvider, agentConfig);
-  }
-
-  let fallback: AgentModelConfig | null = null;
-  if (settings.fallbackProviderId) {
-    const fallbackData = await getProviderWithKey(settings.fallbackProviderId);
-    if (fallbackData?.provider.enabled && fallbackData.apiKey) {
-      fallback = toModelConfig(fallbackData, agentConfig);
-      if (primary && fallback.providerName === primary.providerName && fallback.model === primary.model) {
-        fallback = null;
-      }
-    }
-  }
-
-  return { primary, fallback };
 }
 
 function buildTemplateOutput(agent: Agent, ctx: AgentExecutionContext, stepKey: string): string {
@@ -201,7 +178,32 @@ export async function executeAgentWork(
   const agent = await getAgentById(agentId);
   if (!agent) throw new Error("Agent not found");
 
-  const { primary: modelConfig, fallback: fallbackConfig } = await resolveModelConfigs(agentId);
+  const { assertStepToolAccess, healAgentToolForStep } = await import("./tool-permissions");
+  try {
+    await assertStepToolAccess(agentId, ctx.stepKey);
+  } catch (toolError) {
+    const message = toolError instanceof Error ? toolError.message : "Tool access denied";
+    if (message.includes("Tool access denied") || message.includes("lacks permission")) {
+      const healed = await healAgentToolForStep(agentId, ctx.stepKey);
+      if (healed) {
+        await assertStepToolAccess(agentId, ctx.stepKey);
+      } else {
+        throw toolError;
+      }
+    } else if (!message.includes("does not exist")) {
+      throw toolError;
+    }
+  }
+
+  if (ctx.workflowId) {
+    const { isSessionExecutable } = await import("./session-state-engine");
+    if (!(await isSessionExecutable(ctx.workflowId))) {
+      throw new Error("SESSION_NOT_EXECUTABLE");
+    }
+  }
+
+  const { primary: modelConfig, fallback: fallbackConfig, diagnostics } =
+    await resolveModelConfigs(agentId);
   const step = SDLC_WORKFLOW.find((s) => s.key === ctx.stepKey);
   const requestedArtifact = artifactNameForStep(ctx.stepKey);
   let contextBundle;
@@ -213,6 +215,8 @@ export async function executeAgentWork(
       markdown: `# Objective\n${ctx.objective}\n\n# Project\n${ctx.projectName}`,
       sources: ["objective"],
       loadedAt: new Date().toISOString(),
+      promptLength: ctx.objective.length + ctx.projectName.length + 20,
+      estimatedInputTokens: estimateTokens(`${ctx.objective}${ctx.projectName}`),
     };
   }
   const contextBlock = contextBundle.markdown;
@@ -241,6 +245,9 @@ export async function executeAgentWork(
       ? buildSystemPrompt(agent, ctx.stepKey, modelConfig.systemPrompt, modelConfig.reasoningLevel)
       : "";
     const userPrompt = `${contextBlock}\n\n## Your Task\n${step?.taskDescription ?? "Complete assigned work for: " + ctx.objective}\n\nGenerate the complete deliverable now.`;
+    const timeoutMs = getAgentTimeoutMs(ctx.stepKey, agent);
+    const promptLength = systemPrompt.length + userPrompt.length;
+    const estimatedInputTokens = estimatePromptTokens(systemPrompt, userPrompt);
 
     if (modelConfig?.apiKey) {
       const retryResult = await executeWithRetryPolicy({
@@ -252,6 +259,7 @@ export async function executeAgentWork(
         agentId,
         workflowId: ctx.workflowId,
         runtimeSessionId: session.id,
+        timeoutMs,
         onStatusMessage: ctx.workflowId
           ? async (message) => {
               await postSystemSessionMessage(ctx.workflowId!, message, {
@@ -283,12 +291,45 @@ export async function executeAgentWork(
           usedFallback: retryResult.usedFallback,
           usedTemplate: false,
           timedOut: false,
+          promptLength: retryResult.promptLength,
+          estimatedInputTokens: retryResult.estimatedInputTokens,
+          responseTimeMs: retryResult.responseTimeMs,
+          timeoutMs: retryResult.timeoutMs,
         });
       } else {
         console.error(
           `[agent-executor] AI retries exhausted for ${ctx.stepKey}:`,
           retryResult.errors.join("; "),
         );
+
+        const { isFreeExecutionMode, enqueueAIRecovery, getActiveQueueForSession } =
+          await import("./recovery-queue");
+        const freeMode = await isFreeExecutionMode();
+        const existingQueue = ctx.workflowId
+          ? await getActiveQueueForSession(ctx.workflowId)
+          : null;
+        const useTemplateFromQueue = existingQueue?.status === "template_fallback";
+
+        if (
+          freeMode &&
+          ctx.workflowId &&
+          !useTemplateFromQueue
+        ) {
+          await enqueueAIRecovery({
+            ctx,
+            agentId,
+            runtimeSessionId: session.id,
+            modelConfig,
+            errors: retryResult.errors,
+          });
+          await updateRuntimeSession(session.id, {
+            status: "FAILED",
+            errorMessage: "AI_RECOVERY_QUEUED",
+            reasoning: "Queued for intelligent recovery — provider throttling",
+          });
+          throw new Error("AI_RECOVERY_QUEUED");
+        }
+
         output = buildTemplateOutput(agent, ctx, ctx.stepKey);
         if (ctx.workflowId) {
           await recordTemplateFallback({
@@ -302,9 +343,14 @@ export async function executeAgentWork(
             provider: retryResult.lastProvider,
             model: retryResult.lastModel,
             attemptCount: retryResult.attemptCount,
-            errors: retryResult.errors,
+            errors: [...retryResult.errors, diagnostics],
             timedOut: retryResult.timedOut,
             output,
+            promptLength: retryResult.promptLength,
+            estimatedInputTokens: retryResult.estimatedInputTokens,
+            responseTimeMs: retryResult.responseTimeMs,
+            timeoutMs: retryResult.timeoutMs,
+            failureReason: retryResult.failureReason,
           });
         }
       }
@@ -322,16 +368,19 @@ export async function executeAgentWork(
           provider: "none",
           model: "unconfigured",
           attemptCount: 0,
-          errors: ["No AI provider configured"],
+          errors: ["No AI provider configured", diagnostics],
           timedOut: false,
           output,
+          promptLength,
+          estimatedInputTokens,
+          timeoutMs,
+          failureReason: "No AI provider configured",
         });
       }
     }
 
     const deliverableType = STEP_DELIVERABLE_TYPE[ctx.stepKey] ?? "Knowledge Base Article";
-    const artifactName =
-      ctx.stepKey === "coo_execution" ? "coo_execution_plan_v1" : `${ctx.stepKey}_v1`;
+    const artifactName = artifactNameForStep(ctx.stepKey);
 
     let deliverable: { id: string } | null = null;
     if (ctx.workflowId) {
@@ -392,19 +441,27 @@ export async function executeAgentWork(
 
     const governanceApproval = getStepGovernanceApproval(ctx.stepKey);
     if (governanceApproval && ctx.workflowId) {
-      await requestWorkflowApproval({
-        workflowId: ctx.workflowId,
-        projectId: ctx.projectId,
-        approvalType: governanceApproval,
-        title: step?.deliverableTitle ?? ctx.stepKey,
-        description: `${agent.name} completed ${step?.label ?? ctx.stepKey}`,
-        requestedBy: agent.name,
-        artifactContent: output,
-        context: ctx.stepKey === "deployment" ? { releaseType: "major" } : {},
-      });
+      const { isSessionExecutable } = await import("./session-state-engine");
+      if (await isSessionExecutable(ctx.workflowId)) {
+        await requestWorkflowApproval({
+          workflowId: ctx.workflowId,
+          projectId: ctx.projectId,
+          approvalType: governanceApproval,
+          title: step?.deliverableTitle ?? ctx.stepKey,
+          description: `${agent.name} completed ${step?.label ?? ctx.stepKey}`,
+          requestedBy: agent.name,
+          artifactContent: output,
+          context: ctx.stepKey === "deployment" ? { releaseType: "major" } : {},
+        });
+      }
     }
 
     if (ctx.receiverAgentId && ctx.workflowId) {
+      const { isSessionExecutable } = await import("./session-state-engine");
+      if (!(await isSessionExecutable(ctx.workflowId))) {
+        return { sessionId: session.id, output, usedAI: !!modelConfig };
+      }
+
       const receiver = await getAgentById(ctx.receiverAgentId);
       await sendAgentMessage({
         workflowId: ctx.workflowId,

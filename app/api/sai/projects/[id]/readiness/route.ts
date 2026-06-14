@@ -2,11 +2,10 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { requireFounder } from "@/lib/sai/api-auth";
 import { evaluateExecutionReadiness, runCooExecutionReadinessReview } from "@/lib/sai/execution-readiness";
-import { releaseExecution } from "@/lib/sai/execution-release";
+import { hasExecutionBeenReleased, releaseExecution } from "@/lib/sai/execution-release";
 import { getActiveSession } from "@/lib/sai/session-manager";
 import { findAgentForRole, getAgents } from "@/lib/sai/agents";
 import { updateSessionFields } from "@/lib/sai/session-manager";
-import { transitionSessionState } from "@/lib/sai/session-state";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -51,18 +50,19 @@ export async function POST(_request: Request, { params }: Params) {
 
     let release = null;
     if (readiness.ready) {
-      release = await releaseExecution({
-        sessionId: active.id,
-        projectId,
-        cooAgentId: coo.id,
-      });
-      if (active.sessionStatus === "planning") {
-        await transitionSessionState(active.id, "planning", "executing", coo.id);
+      if (await hasExecutionBeenReleased(active.id)) {
+        release = { sessionId: active.id, released: true };
+      } else {
+        release = await releaseExecution({
+          sessionId: active.id,
+          projectId,
+          cooAgentId: coo.id,
+        });
       }
     }
 
     await updateSessionFields(active.id, {
-      sessionStatus: readiness.ready ? "executing" : "planning",
+      ...(readiness.ready ? {} : { sessionStatus: "planning" }),
       strategicBrief: {
         ...(active.strategicBrief as Record<string, unknown>),
         executionReadiness: {

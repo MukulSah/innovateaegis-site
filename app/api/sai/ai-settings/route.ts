@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { requireOwner } from "@/lib/sai/api-auth";
 import { getCompanyAISettings, updateCompanyAISettings } from "@/lib/sai/ai-settings";
-import type { AIModelMode } from "@/lib/sai/types";
+import type { AIModelMode, AIExecutionMode } from "@/lib/sai/types";
 import { isSupabaseConfigured } from "@/lib/supabase/server";
 
 export async function GET() {
@@ -26,11 +26,14 @@ export async function PATCH(request: Request) {
 
   const body = await request.json();
   const modes: AIModelMode[] = ["single", "per_agent"];
+  const execModes: AIExecutionMode[] = ["free", "paid"];
   const modelMode = modes.includes(body.modelMode) ? body.modelMode : undefined;
+  const executionMode = execModes.includes(body.executionMode) ? body.executionMode : undefined;
 
   try {
     const settings = await updateCompanyAISettings({
       modelMode,
+      executionMode,
       defaultProviderId: typeof body.defaultProviderId === "string" ? body.defaultProviderId : undefined,
     });
     revalidatePath("/sai/settings/ai");

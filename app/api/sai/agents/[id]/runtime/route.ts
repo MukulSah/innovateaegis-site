@@ -50,6 +50,8 @@ export async function PATCH(request: Request, { params }: Ctx) {
       }
       const task = await reassignTaskAgent(taskId, targetAgentId);
       revalidatePath(`/sai/agents/${agentId}/workspace`);
+      revalidatePath(`/sai/organization/agents/${agentId}/workspace`);
+      revalidatePath("/sai/organization");
       revalidatePath("/sai/execution");
       return NextResponse.json({ task });
     }
@@ -96,6 +98,8 @@ export async function PATCH(request: Request, { params }: Ctx) {
       });
 
       revalidatePath(`/sai/agents/${agentId}/workspace`);
+      revalidatePath(`/sai/organization/agents/${agentId}/workspace`);
+      revalidatePath("/sai/organization");
       revalidatePath("/sai/execution");
       revalidatePath("/sai");
       return NextResponse.json({ result });
@@ -107,6 +111,8 @@ export async function PATCH(request: Request, { params }: Ctx) {
     else session = await terminateRuntimeSession(sessionId);
 
     revalidatePath(`/sai/agents/${agentId}/workspace`);
+    revalidatePath(`/sai/organization/agents/${agentId}/workspace`);
+    revalidatePath("/sai/organization");
     return NextResponse.json({ session });
   } catch (error) {
     return NextResponse.json(

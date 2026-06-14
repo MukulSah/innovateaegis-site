@@ -278,10 +278,10 @@ export function AgentWorkspaceView({
 
       <div className="flex gap-3">
         <Link
-          href="/sai/agents"
+          href="/sai/organization?section=agent-center"
           className="rounded-lg border border-white/10 px-4 py-2 text-xs text-white/60 hover:bg-white/5"
         >
-          ← Back to Agent Factory
+          ← Back to Organization
         </Link>
         <Link
           href="/sai/execution"

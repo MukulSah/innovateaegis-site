@@ -54,18 +54,34 @@ export function ExecutionBoardView({ board }: Props) {
           </ul>
         </section>
 
-        <section className="enterprise-glass rounded-xl border border-white/10 p-5">
+        <section className="enterprise-glass rounded-xl border border-red-400/20 p-5 lg:col-span-2">
           <h2 className="text-sm font-semibold text-white">Blocked Tasks</h2>
-          <ul className="mt-3 space-y-2">
-            {board.blockedTaskList.length === 0 ? (
+          <ul className="mt-3 space-y-3">
+            {(board.blockedTaskDetails ?? []).length === 0 ? (
               <li className="text-sm text-white/40">No blocked tasks.</li>
             ) : (
-              board.blockedTaskList.map((t) => (
-                <li key={t.id} className="rounded-lg border border-red-400/20 bg-red-500/5 p-3">
-                  <p className="text-sm text-white">{t.title}</p>
-                  <p className="mt-1 text-[10px] text-white/40">
-                    {t.projectName} · {t.status} · {t.progressPercentage}%
-                  </p>
+              board.blockedTaskDetails.map((t) => (
+                <li key={t.taskId} className="rounded-lg border border-red-400/20 bg-red-500/5 p-4">
+                  <p className="text-sm font-medium text-white">{t.taskName}</p>
+                  <dl className="mt-2 grid gap-1 text-[11px] sm:grid-cols-2">
+                    <div>
+                      <dt className="text-white/40">Owner</dt>
+                      <dd className="text-white/75">{t.ownerAgent ?? "Unassigned"}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-white/40">Block Reason</dt>
+                      <dd className="text-red-200/90">{t.blockReason}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-white/40">Waiting On</dt>
+                      <dd className="text-white/70">{t.waitingOn ?? "—"}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-white/40">Dependency</dt>
+                      <dd className="text-white/70">{t.dependency ?? "—"}</dd>
+                    </div>
+                  </dl>
+                  <p className="mt-2 text-[11px] text-emerald-300/80">{t.recommendedAction}</p>
                 </li>
               ))
             )}

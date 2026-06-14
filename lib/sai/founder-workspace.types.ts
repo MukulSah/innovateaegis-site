@@ -25,6 +25,7 @@ export const FOUNDER_SECTIONS: { id: FounderWorkspaceSection; label: string }[] 
 
 export type FounderWorkspaceViewTab =
   | "dashboard"
+  | "sessions"
   | "discussions"
   | "meetings"
   | "intelligence"
@@ -33,6 +34,7 @@ export type FounderWorkspaceViewTab =
 
 export const FOUNDER_VIEW_TABS: { id: FounderWorkspaceViewTab; label: string }[] = [
   { id: "dashboard", label: "Command Dashboard" },
+  { id: "sessions", label: "Session Command Center" },
   { id: "discussions", label: "Discussion Center" },
   { id: "meetings", label: "Meeting Center" },
   { id: "intelligence", label: "Agent Intelligence" },

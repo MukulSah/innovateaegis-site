@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AiReliabilityPanel } from "@/components/sai/ai-reliability-panel";
+import { formatClientApiError, parseJsonResponse } from "@/lib/sai/client-api";
 import type { FounderSessionOverview } from "@/lib/sai/founder-session-overview";
+import { useDebouncedRouterRefresh } from "@/lib/sai/use-debounced-router-refresh";
 
 type Props = {
   overview: FounderSessionOverview;
@@ -23,12 +24,27 @@ function statusBadgeClass(status: string, isStalled: boolean): string {
 }
 
 export function FounderActiveSessionPanel({ overview }: Props) {
-  const router = useRouter();
+  const refreshPage = useDebouncedRouterRefresh(15_000);
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [closeReason, setCloseReason] = useState("");
   const [showCloseForm, setShowCloseForm] = useState(false);
   const [showForceForm, setShowForceForm] = useState(false);
+  const [needsFinalization, setNeedsFinalization] = useState(false);
+
+  useEffect(() => {
+    fetch(`/api/sai/sessions/${overview.sessionId}/truth`)
+      .then(async (res) => {
+        const data = await parseJsonResponse<{ truth?: { knowledgeArchiveExists?: boolean; isComplete?: boolean } }>(
+          res,
+          `/api/sai/sessions/${overview.sessionId}/truth`,
+        );
+        if (res.ok && data.truth) {
+          setNeedsFinalization(Boolean(data.truth.knowledgeArchiveExists && !data.truth.isComplete));
+        }
+      })
+      .catch(() => {});
+  }, [overview.sessionId]);
 
   const displayStatus = overview.isStalled ? "stalled" : overview.sessionStatus;
 
@@ -36,19 +52,20 @@ export function FounderActiveSessionPanel({ overview }: Props) {
     setLoading(action);
     setError("");
     try {
-      const res = await fetch(`/api/sai/sessions/${overview.sessionId}/recovery`, {
+      const route = `/api/sai/sessions/${overview.sessionId}/recovery`;
+      const res = await fetch(route, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action, ...extra }),
       });
-      const data = await res.json();
+      const data = await parseJsonResponse<{ error?: string }>(res, route);
       if (!res.ok) throw new Error(data.error || "Action failed");
       setShowCloseForm(false);
       setShowForceForm(false);
       setCloseReason("");
-      router.refresh();
+      refreshPage();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Action failed");
+      setError(formatClientApiError(err, "Session Recovery API"));
     } finally {
       setLoading(null);
     }
@@ -65,7 +82,7 @@ export function FounderActiveSessionPanel({ overview }: Props) {
           <p className="mt-1 text-sm text-white/60">{overview.objective}</p>
         </div>
         <Link
-          href={`/sai/workflows/${overview.sessionId}`}
+          href={`/sai/sessions/${overview.sessionId}`}
           className="rounded-lg border border-purple-400/30 px-3 py-1.5 text-xs text-purple-200 hover:bg-purple-500/10"
         >
           Open session →
@@ -156,14 +173,13 @@ export function FounderActiveSessionPanel({ overview }: Props) {
               setLoading("readiness");
               setError("");
               try {
-                const res = await fetch(`/api/sai/projects/${overview.projectId}/readiness`, {
-                  method: "POST",
-                });
-                const data = await res.json();
+                const route = `/api/sai/projects/${overview.projectId}/readiness`;
+                const res = await fetch(route, { method: "POST" });
+                const data = await parseJsonResponse<{ error?: string }>(res, route);
                 if (!res.ok) throw new Error(data.error || "Readiness check failed");
-                router.refresh();
+                refreshPage();
               } catch (err) {
-                setError(err instanceof Error ? err.message : "Readiness check failed");
+                setError(formatClientApiError(err, "Readiness API"));
               } finally {
                 setLoading(null);
               }
@@ -256,9 +272,35 @@ export function FounderActiveSessionPanel({ overview }: Props) {
         </div>
       )}
 
+      {needsFinalization && (
+        <div className="mt-4 rounded-lg border border-emerald-400/25 bg-emerald-500/10 p-4">
+          <p className="text-xs font-semibold text-emerald-200">Session Finalization Required</p>
+          <p className="mt-1 text-sm text-white/70">
+            Knowledge archive exists but the session is not closed. Run the Finalization Engine to
+            complete Session #{overview.sessionNumber} and preserve history.
+          </p>
+          <button
+            type="button"
+            disabled={loading !== null}
+            onClick={() => runAction("finalize_session")}
+            className="mt-3 rounded-lg bg-emerald-500/20 px-3 py-1.5 text-xs text-emerald-100 hover:bg-emerald-500/30 disabled:opacity-50"
+          >
+            {loading === "finalize_session" ? "Finalizing…" : "Run Finalization Engine"}
+          </button>
+        </div>
+      )}
+
       <div className="mt-5 border-t border-white/10 pt-4">
         <p className="text-xs font-semibold uppercase tracking-wider text-white/45">Recovery Actions</p>
         <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={loading !== null}
+            onClick={() => runAction("reconcile_state")}
+            className="rounded-lg border border-cyan-400/30 px-3 py-1.5 text-xs text-cyan-200 hover:bg-cyan-500/10 disabled:opacity-50"
+          >
+            {loading === "reconcile_state" ? "Reconciling…" : "Reconcile State"}
+          </button>
           {overview.canResume && (
             <button
               type="button"

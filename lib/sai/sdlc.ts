@@ -174,7 +174,27 @@ export function getNextDeliveryStage(afterStepKey: string): SDLCStep | null {
   return getNextPrimaryStage(afterStepKey);
 }
 
+const PRIMARY_DELIVERABLE_NAMES: Record<string, string> = {
+  coo_execution: "coo_execution_plan_v1",
+  design: "architecture_v1",
+  tasks: "task_plan_v1",
+  implementation: "implementation_plan_v1",
+  validation: "qa_report_v1",
+  deployment: "release_plan_v1",
+  documentation: "session_final_report_v1",
+  knowledge: "knowledge_archive_v1",
+};
+
+export function stepContextArtifactName(stepKey: string): string {
+  if (stepKey === "design") return "architecture_context_v1";
+  if (stepKey === "coo_execution") return "coo_execution_plan_v1";
+  return `${stepKey}_v1`;
+}
+
 export function deliverableArtifactName(stepKey: string, version = 1): string {
+  if (version === 1 && PRIMARY_DELIVERABLE_NAMES[stepKey]) {
+    return PRIMARY_DELIVERABLE_NAMES[stepKey];
+  }
   return `${stepKey}_v${version}`;
 }
 

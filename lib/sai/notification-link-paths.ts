@@ -14,7 +14,7 @@ export function staticEntityLink(entityType: string, entityId: string): Notifica
     case "approval":
       return { href: `/sai/approvals/${entityId}`, label: "View approval" };
     case "agent":
-      return { href: `/sai/agents/${entityId}/workspace`, label: "View agent" };
+      return { href: `/sai/organization/agents/${entityId}/workspace`, label: "View agent" };
     case "release":
       return { href: "/sai/releases", label: "View releases" };
     case "decision":

@@ -1,4 +1,4 @@
-import { validateReportingHierarchy } from "@/lib/sai/agent-hierarchy";
+import { validateReportingHierarchy, findAgentForRole as hierarchyFindAgentForRole } from "@/lib/sai/agent-hierarchy";
 import { createSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase/server";
 import { recordActivity } from "./activity-logs";
 import type { Agent, AgentMemory, AgentStatus, PriorityLevel } from "./types";
@@ -475,14 +475,5 @@ export function validateAgentInput(body: unknown): AgentInput | null {
 }
 
 export function findAgentForRole(agents: Agent[], matchRoles: string[]): Agent | null {
-  const active = agents.filter((a) => a.status !== "disabled");
-  for (const match of matchRoles) {
-    const found = active.find(
-      (a) =>
-        a.role.toLowerCase().includes(match.toLowerCase()) ||
-        a.name.toLowerCase().includes(match.toLowerCase()),
-    );
-    if (found) return found;
-  }
-  return active[0] ?? null;
+  return hierarchyFindAgentForRole(agents, matchRoles);
 }

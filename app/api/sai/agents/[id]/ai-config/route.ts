@@ -32,6 +32,8 @@ export async function PATCH(request: Request, { params }: Ctx) {
   try {
     const config = await upsertAgentAIConfig(id, input);
     revalidatePath(`/sai/agents/${id}/workspace`);
+    revalidatePath(`/sai/organization/agents/${id}/workspace`);
+    revalidatePath("/sai/organization");
     return NextResponse.json({ config });
   } catch (error) {
     return NextResponse.json(

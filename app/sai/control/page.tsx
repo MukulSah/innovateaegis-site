@@ -1,5 +1,6 @@
 import { AIOperationsPanel } from "@/components/sai/ai-operations-panel";
 import { ControlPanel } from "@/components/sai/control-panel";
+import { ControlPanelLive } from "@/components/sai/control-panel-live";
 import { SectionPage } from "@/components/sai/section-page";
 import { getSession } from "@/lib/sai/api-auth";
 import { getAgents } from "@/lib/sai/agents";
@@ -86,6 +87,7 @@ export default async function ControlPage() {
       description="View all agents, workloads, blocked tasks, and SDLC workflows. Launch objectives, reassign work, pause agents, approve releases, and override execution."
     >
       {isAdmin && <AIOperationsPanel metrics={aiOperations} />}
+      <ControlPanelLive>
       <ControlPanel
         stats={stats}
         agents={agents}
@@ -95,6 +97,7 @@ export default async function ControlPage() {
         workflowEvents={workflowEvents}
         isAdmin={isAdmin}
       />
+      </ControlPanelLive>
     </SectionPage>
   );
 }

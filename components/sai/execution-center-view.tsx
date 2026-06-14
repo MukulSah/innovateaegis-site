@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { AgentFeed } from "@/components/sai/agent-feed";
 import type { ExecutionCenterData } from "@/lib/sai/types";
+import { useSaiRealtimeSync } from "@/lib/sai/use-sai-realtime-sync";
 
 type Props = { data: ExecutionCenterData };
 
@@ -16,6 +18,9 @@ function EngineCard({ label, status }: { label: string; status: string }) {
 }
 
 export function ExecutionCenterView({ data }: Props) {
+  const router = useRouter();
+  useSaiRealtimeSync(() => router.refresh());
+
   const primary = data.activeSessions[0];
 
   return (
@@ -40,7 +45,7 @@ export function ExecutionCenterView({ data }: Props) {
               </p>
             </div>
             <Link
-              href={`/sai/workflows/${primary.workflow.id}`}
+              href={`/sai/sessions/${primary.workflow.id}`}
               className="rounded-lg border border-white/15 px-3 py-1.5 text-xs text-white/80 hover:border-purple-400/40"
             >
               Open Session
@@ -130,10 +135,18 @@ export function ExecutionCenterView({ data }: Props) {
         </section>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <div className="enterprise-glass rounded-xl border border-white/10 p-4">
           <p className="text-[10px] text-white/40">Active Workflows</p>
           <p className="text-2xl font-bold text-white">{data.stats.activeWorkflows}</p>
+        </div>
+        <div className="enterprise-glass rounded-xl border border-emerald-400/20 p-4">
+          <p className="text-[10px] text-white/40">Completed</p>
+          <p className="text-2xl font-bold text-emerald-300">{data.stats.completedWorkflows}</p>
+        </div>
+        <div className="enterprise-glass rounded-xl border border-amber-400/20 p-4">
+          <p className="text-[10px] text-white/40">Needs Review</p>
+          <p className="text-2xl font-bold text-amber-200">{data.stats.failedWorkflows}</p>
         </div>
         <div className="enterprise-glass rounded-xl border border-white/10 p-4">
           <p className="text-[10px] text-white/40">Blocked Tasks</p>
@@ -144,6 +157,36 @@ export function ExecutionCenterView({ data }: Props) {
           <p className="text-2xl font-bold text-amber-300">{data.stats.approvalsPending}</p>
         </div>
       </div>
+
+      {data.completedSessions.length > 0 && (
+        <section className="enterprise-glass rounded-xl border border-emerald-400/20 p-5">
+          <h3 className="text-sm font-semibold text-white">Completed Workflows</h3>
+          <ul className="mt-3 space-y-2">
+            {data.completedSessions.map((s) => (
+              <li key={s.workflow.id}>
+                <Link href={`/sai/sessions/${s.workflow.id}`} className="block rounded-lg border border-white/5 p-3 hover:border-emerald-400/30">
+                  <p className="text-sm text-white">Session #{s.workflow.sessionNumber} — {s.workflow.objective}</p>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {data.failedSessions.length > 0 && (
+        <section className="enterprise-glass rounded-xl border border-amber-400/20 p-5">
+          <h3 className="text-sm font-semibold text-white">Failed / Needs Founder Review</h3>
+          <ul className="mt-3 space-y-2">
+            {data.failedSessions.map((s) => (
+              <li key={s.workflow.id}>
+                <Link href={`/sai/sessions/${s.workflow.id}`} className="block rounded-lg border border-amber-400/10 p-3">
+                  <p className="text-sm text-white">Session #{s.workflow.sessionNumber} — {s.workflow.objective}</p>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </div>
   );
 }

@@ -1,8 +1,7 @@
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { getAgentAIConfig } from "./agent-ai-config";
-import { getCompanyAISettings } from "./ai-settings";
 import { generateAICompletion } from "./ai-client";
-import { getDefaultAIProvider, getProviderWithKey } from "./ai-providers";
+import { resolveAIProviderForAgent } from "./ai-provider-resolver";
 import { getAgentById } from "./agents";
 import { getAgentContext } from "./context-engine";
 import type { AgentExecutionContext } from "./agent-executor";
@@ -17,34 +16,15 @@ export class ConversationClosedError extends Error {
 }
 
 async function resolveModelConfig(agentId: string) {
-  const [settings, agentConfig, defaultProvider] = await Promise.all([
-    getCompanyAISettings(),
-    getAgentAIConfig(agentId),
-    getDefaultAIProvider(),
-  ]);
+  const { primary } = await resolveAIProviderForAgent(agentId);
+  if (!primary?.apiKey) return null;
 
-  if (settings.modelMode === "per_agent" && agentConfig?.enabled && agentConfig.providerId) {
-    const providerData = await getProviderWithKey(agentConfig.providerId);
-    if (providerData?.provider.enabled) {
-      return {
-        providerName: providerData.provider.providerName,
-        apiKey: providerData.apiKey,
-        endpoint: providerData.provider.endpoint,
-        model: agentConfig.model ?? providerData.provider.model,
-        temperature: agentConfig.temperature,
-        maxTokens: agentConfig.maxTokens,
-        systemPrompt: agentConfig.systemPrompt,
-      };
-    }
-  }
-
-  if (!defaultProvider?.apiKey) return null;
-
+  const agentConfig = await getAgentAIConfig(agentId);
   return {
-    providerName: defaultProvider.provider.providerName,
-    apiKey: defaultProvider.apiKey,
-    endpoint: defaultProvider.provider.endpoint,
-    model: defaultProvider.provider.model,
+    providerName: primary.providerName,
+    apiKey: primary.apiKey,
+    endpoint: primary.endpoint,
+    model: agentConfig?.model ?? primary.model,
     temperature: agentConfig?.temperature ?? 0.7,
     maxTokens: agentConfig?.maxTokens ?? 2048,
     systemPrompt: agentConfig?.systemPrompt ?? "",

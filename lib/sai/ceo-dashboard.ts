@@ -2,7 +2,7 @@ import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { findAgentForRole, getAgents } from "./agents";
 import { computeSessionHealth } from "./execution-health";
 import { getWorkflowApprovals } from "./governance";
-import { getAllActiveSessions } from "./session-manager";
+import { getAllActiveSessions, getSessionsByLifecycle } from "./session-manager";
 import { computeStrategicHealth } from "./strategic-health";
 import { getWorkflowRunById } from "./workflows";
 import type { SessionEscalation, SessionStatus } from "./types";
@@ -23,11 +23,13 @@ export type CeoSponsoredSession = {
 
 export type CeoDashboardData = {
   sponsoredSessions: CeoSponsoredSession[];
+  completedSessions: CeoSponsoredSession[];
   strategicRisks: { sessionId: string; label: string; risk: string }[];
   blockedObjectives: CeoSponsoredSession[];
   delayedSessions: CeoSponsoredSession[];
   successMetrics: { sessionId: string; objective: string; metrics: string }[];
   escalations: SessionEscalation[];
+  resolvedEscalations: SessionEscalation[];
   recentDecisions: { title: string; createdAt: string }[];
   pendingApprovals: Awaited<ReturnType<typeof getWorkflowApprovals>>;
   aiReliability: import("./types").AIReliabilityStatus;
@@ -76,8 +78,22 @@ export async function getCeoDashboard(ceoAgentId: string): Promise<CeoDashboardD
   const active = await getAllActiveSessions();
   const sponsored = active.filter((s) => s.executive_sponsor_agent_id === ceoAgentId);
 
+  const completedRows = await getSessionsByLifecycle({
+    includeCompleted: true,
+    limit: 20,
+  });
+  const sponsoredCompleted = completedRows.filter(
+    (s) =>
+      s.executive_sponsor_agent_id === ceoAgentId &&
+      (s.status === "completed" || s.session_status === "cancelled"),
+  );
+
   const sessions = (
     await Promise.all(sponsored.map((s) => buildSponsoredSession(s.id, agents)))
+  ).filter((s): s is CeoSponsoredSession => s !== null);
+
+  const completedSessions = (
+    await Promise.all(sponsoredCompleted.map((s) => buildSponsoredSession(s.id, agents)))
   ).filter((s): s is CeoSponsoredSession => s !== null);
 
   const strategicRisks = sessions
@@ -106,16 +122,28 @@ export async function getCeoDashboard(ceoAgentId: string): Promise<CeoDashboardD
   );
 
   const supabase = createSupabaseAdmin();
+  const sessionIds = sponsored.length
+    ? sponsored.map((s) => s.id)
+    : ["00000000-0000-0000-0000-000000000000"];
+
+  const { resolveStaleEscalations } = await import("./escalation-resolver");
+  await Promise.all(sponsored.map((s) => resolveStaleEscalations(s.id).catch(() => 0)));
+
   const { data: escalationRows } = await supabase
     .from("session_escalations")
     .select("*")
-    .in(
-      "workflow_run_id",
-      sponsored.length ? sponsored.map((s) => s.id) : ["00000000-0000-0000-0000-000000000000"],
-    )
+    .in("workflow_run_id", sessionIds)
     .eq("status", "open")
     .order("created_at", { ascending: false })
     .limit(20);
+
+  const { data: resolvedEscalationRows } = await supabase
+    .from("session_escalations")
+    .select("*")
+    .in("workflow_run_id", sessionIds)
+    .eq("status", "resolved")
+    .order("resolved_at", { ascending: false })
+    .limit(10);
 
   const { data: timeline } = await supabase
     .from("company_timeline")
@@ -136,12 +164,23 @@ export async function getCeoDashboard(ceoAgentId: string): Promise<CeoDashboardD
 
   return {
     sponsoredSessions: sessions,
+    completedSessions,
     strategicRisks,
     blockedObjectives,
     delayedSessions,
     successMetrics,
     aiReliability,
     escalations: (escalationRows ?? []).map((row) => ({
+      id: row.id,
+      workflowRunId: row.workflow_run_id,
+      issue: row.issue,
+      owner: row.owner,
+      priority: row.priority as SessionEscalation["priority"],
+      status: row.status as SessionEscalation["status"],
+      createdByAgentId: row.created_by_agent_id,
+      createdAt: row.created_at,
+    })),
+    resolvedEscalations: (resolvedEscalationRows ?? []).map((row) => ({
       id: row.id,
       workflowRunId: row.workflow_run_id,
       issue: row.issue,

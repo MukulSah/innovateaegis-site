@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AgentConversationPanel } from "@/components/sai/agent-conversation-panel";
-import { AgentFeed } from "@/components/sai/agent-feed";
 import { AgentTurnCard } from "@/components/sai/agent-turn-card";
 import { CeoWorkspaceDashboard } from "@/components/sai/ceo-workspace-dashboard";
 import { SectionPage } from "@/components/sai/section-page";
@@ -98,19 +97,15 @@ export default async function CeoWorkspacePage({ searchParams }: Props) {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <h2 className="text-sm font-semibold text-white">Sponsored Session Activity</h2>
                 <Link
-                  href={`/sai/workflows/${primarySessionId}`}
+                  href={`/sai/sessions/${primarySessionId}`}
                   className="text-xs text-purple-300 hover:underline"
                 >
-                  Open session →
+                  Open in Session Center →
                 </Link>
               </div>
-              <div className="mt-4">
-                <AgentFeed
-                  items={sessionFeed}
-                  sessionLabel="CEO Monitoring Feed"
-                  showApprovalActions={false}
-                />
-              </div>
+              <p className="mt-2 text-xs text-white/45">
+                {sessionFeed.length} agent event(s) — open Session Center for artifacts and execution records.
+              </p>
             </section>
           </>
         )}
@@ -136,29 +131,17 @@ export default async function CeoWorkspacePage({ searchParams }: Props) {
           </section>
         )}
 
-        {artifacts.length > 0 && objectiveId && (
+        {objectiveFeed.length > 0 && objectiveId && (
           <section className="enterprise-glass rounded-xl border border-white/10 p-5">
-            <h2 className="text-sm font-semibold text-white">Objective Artifacts</h2>
-            <ul className="mt-3 space-y-2">
-              {artifacts.map((a) => (
-                <li
-                  key={a.id}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/5 p-3 text-sm"
-                >
-                  <span className="font-mono text-purple-300">{a.artifactName ?? a.stepKey}</span>
-                  <span className="text-xs text-white/40">Turn #{a.turnNumber}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
-
-        {objectiveFeed.length > 0 && (
-          <section className="enterprise-glass rounded-xl border border-white/10 p-5">
-            <h2 className="text-sm font-semibold text-white">Objective Agent Feed</h2>
-            <div className="mt-4">
-              <AgentFeed items={objectiveFeed} sessionLabel="CEO Objective Activity" />
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold text-white">Objective Activity Summary</h2>
+              <Link href="/sai/sessions" className="text-xs text-purple-300 hover:underline">
+                Session Center →
+              </Link>
             </div>
+            <p className="mt-1 text-xs text-white/45">
+              {objectiveFeed.length} agent event(s) — open Session Center for full records.
+            </p>
           </section>
         )}
 

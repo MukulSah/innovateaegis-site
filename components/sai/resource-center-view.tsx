@@ -270,7 +270,7 @@ export function ResourceCenterView({
         <ul className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {availableAgents.map((agent) => (
             <li key={agent.id} className="rounded-lg border border-white/5 p-3">
-              <Link href={`/sai/agents/${agent.id}/workspace`} className="text-sm text-white hover:underline">
+              <Link href={`/sai/organization/agents/${agent.id}/workspace`} className="text-sm text-white hover:underline">
                 {agent.name}
               </Link>
               <p className="text-xs text-white/40">{agent.role}</p>

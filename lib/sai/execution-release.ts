@@ -147,10 +147,34 @@ async function resolveStageAgents(
   return findAgentForRole(agents, sdlcStep.matchRoles);
 }
 
+/** Minutes to suppress stall/escalation noise while release is in flight. */
+export const RELEASE_GRACE_MINUTES = 10;
+
+export async function isInExecutionReleaseGrace(sessionId: string): Promise<boolean> {
+  const session = await getWorkflowRunById(sessionId);
+  if (!session) return false;
+  if (session.sessionStatus === "execution_releasing") return true;
+  if (session.executionReleasedAt) return false;
+  if (await isReleaseInProgress(sessionId)) return true;
+
+  const supabase = createSupabaseAdmin();
+  const since = new Date(Date.now() - RELEASE_GRACE_MINUTES * 60 * 1000).toISOString();
+  const { data } = await supabase
+    .from("execution_release_trails")
+    .select("created_at")
+    .eq("workflow_run_id", sessionId)
+    .gte("created_at", since)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  return Boolean(data);
+}
+
 export async function hasExecutionBeenReleased(sessionId: string): Promise<boolean> {
   const session = await getWorkflowRunById(sessionId);
   if (!session) return false;
-  if (session.executionReleasedAt || session.currentAgentId) return true;
+  if (session.executionReleasedAt) return true;
   const brief = session.strategicBrief?.executionRelease as { releasedAt?: string } | undefined;
   if (brief?.releasedAt) return true;
   const artifacts = await getSessionArtifacts(sessionId);
@@ -249,6 +273,12 @@ export async function releaseExecution(input: {
   const agents = await getAgents();
   const coo = agents.find((a) => a.id === input.cooAgentId);
   if (!coo) throw new ExecutionReleaseError("COO agent not found", trailId);
+
+  const supabase = createSupabaseAdmin();
+  await supabase
+    .from("workflow_runs")
+    .update({ session_status: "execution_releasing" })
+    .eq("id", input.sessionId);
 
   let readiness = await evaluateExecutionReadiness(input.projectId, input.sessionId);
   await logStep(trailId, "validate_ready", "Validate READY Status", async () => {

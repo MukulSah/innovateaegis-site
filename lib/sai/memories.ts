@@ -54,7 +54,7 @@ function mapInput(input: MemoryInput) {
   };
 }
 
-export async function getMemories(filters: MemoryFilters = {}): Promise<CompanyMemory[]> {
+export async function getMemories(filters: MemoryFilters = {}, limit = 100): Promise<CompanyMemory[]> {
   if (!isSupabaseConfigured()) return [];
 
   const supabase = createSupabaseAdmin();
@@ -67,7 +67,7 @@ export async function getMemories(filters: MemoryFilters = {}): Promise<CompanyM
     query = query.or(`title.ilike.${term},content.ilike.${term}`);
   }
 
-  const { data, error } = await query;
+  const { data, error } = await query.limit(limit);
   if (error) throw new Error(error.message);
   return (data as MemoryRow[]).map(mapRow);
 }

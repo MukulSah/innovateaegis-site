@@ -3,10 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
+    "dev": "node --use-system-ca ./node_modules/next/dist/bin/next dev --webpack",
+    "build": "node --use-system-ca ./node_modules/next/dist/bin/next build --webpack",
+    "start": "node --use-system-ca ./node_modules/next/dist/bin/next start",
+    "lint": "eslint",
+    "validate:sai": "node scripts/validate-sai-imports.mjs",
+    "migrate:030": "node scripts/apply-migration-030.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",
@@ -25,6 +27,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.2",
+    "postgres": "^3.4.9",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
