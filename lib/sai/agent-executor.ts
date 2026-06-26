@@ -1,6 +1,8 @@
 import { createSupabaseAdmin } from "@/lib/supabase/server";
 import { getAgentAIConfig } from "./agent-ai-config";
 import { executeWithRetryPolicy, type AgentModelConfig } from "./ai-retry-engine";
+import { buildModelAlternates, listCatalogModels, supportsModelCatalog } from "./ai-model-catalog";
+import { getCompanyAISettings } from "./ai-settings";
 import {
   artifactNameForStep,
   recordAIExecutionEvent,
@@ -77,28 +79,82 @@ export type AgentExecutionContext = {
   receiverAgentId?: string | null;
 };
 
-async function resolveModelConfigs(agentId: string): Promise<{
+async function resolveModelConfigs(
+  agentId: string,
+  workflowId?: string | null,
+): Promise<{
   primary: AgentModelConfig | null;
   fallback: AgentModelConfig | null;
   diagnostics: string;
 }> {
-  const { primary, fallback } = await resolveAIProviderForAgent(agentId);
-  const agentConfig = await getAgentAIConfig(agentId);
+  const [{ primary, fallback }, agentConfig, companySettings] = await Promise.all([
+    resolveAIProviderForAgent(agentId),
+    getAgentAIConfig(agentId),
+    getCompanyAISettings(),
+  ]);
 
-  const toConfig = (resolved: NonNullable<typeof primary>): AgentModelConfig => ({
-    providerName: resolved.providerName,
-    apiKey: resolved.apiKey,
-    endpoint: resolved.endpoint,
-    model: agentConfig?.model ?? resolved.model,
-    temperature: agentConfig?.temperature ?? 0.7,
-    maxTokens: agentConfig?.maxTokens ?? 4096,
-    reasoningLevel: (agentConfig?.reasoningLevel ?? "standard") as ReasoningLevel,
-    systemPrompt: agentConfig?.systemPrompt ?? "",
-  });
+  const sessionAi = workflowId
+    ? await (await import("./launch-ai-options")).getSessionAiConfig(workflowId)
+    : null;
+
+  const buildConfig = async (
+    resolved: NonNullable<typeof primary>,
+  ): Promise<AgentModelConfig> => {
+    const agentOverride = agentConfig?.model?.trim() || null;
+    const baseModel = resolved.model;
+    const model =
+      agentOverride ??
+      (sessionAi?.mode === "fixed" && sessionAi.model ? sessionAi.model : null) ??
+      (sessionAi?.model ? sessionAi.model : null) ??
+      baseModel;
+
+    const poolSource =
+      sessionAi?.modelPool && sessionAi.modelPool.length > 0
+        ? sessionAi.modelPool
+        : resolved.modelPool;
+
+    const autoRotate = sessionAi
+      ? sessionAi.autoRotate
+      : (companySettings.autoModelRotation ?? true) && resolved.autoRotateModels;
+
+    let catalogIds: string[] | undefined;
+
+    if (
+      autoRotate &&
+      supportsModelCatalog(resolved.providerName) &&
+      resolved.apiKey &&
+      poolSource.length < 2
+    ) {
+      try {
+        const catalog = await listCatalogModels({
+          providerName: resolved.providerName,
+          apiKey: resolved.apiKey,
+          endpoint: resolved.endpoint,
+        });
+        catalogIds = catalog.map((m) => m.id);
+      } catch (error) {
+        console.warn("[agent-executor] model catalog fetch failed:", error);
+      }
+    }
+
+    const modelAlternates = buildModelAlternates(model, poolSource, autoRotate, catalogIds);
+
+    return {
+      providerName: resolved.providerName,
+      apiKey: resolved.apiKey,
+      endpoint: resolved.endpoint,
+      model,
+      temperature: agentConfig?.temperature ?? 0.7,
+      maxTokens: agentConfig?.maxTokens ?? 4096,
+      reasoningLevel: (agentConfig?.reasoningLevel ?? "standard") as ReasoningLevel,
+      systemPrompt: agentConfig?.systemPrompt ?? "",
+      modelAlternates,
+    };
+  };
 
   return {
-    primary: primary ? toConfig(primary) : null,
-    fallback: fallback ? toConfig(fallback) : null,
+    primary: primary ? await buildConfig(primary) : null,
+    fallback: fallback ? await buildConfig(fallback) : null,
     diagnostics: formatProviderDiagnostics(primary),
   };
 }
@@ -203,12 +259,30 @@ export async function executeAgentWork(
   }
 
   const { primary: modelConfig, fallback: fallbackConfig, diagnostics } =
-    await resolveModelConfigs(agentId);
+    await resolveModelConfigs(agentId, ctx.workflowId);
   const step = SDLC_WORKFLOW.find((s) => s.key === ctx.stepKey);
+
+  const automationCtx = ctx.workflowId
+    ? await (await import("./automation-executor")).loadAutomationContext(ctx.workflowId)
+    : null;
+
   const requestedArtifact = artifactNameForStep(ctx.stepKey);
   let contextBundle;
   try {
-    contextBundle = await getAgentContext(agent, ctx);
+    if (automationCtx) {
+      const block = await (
+        await import("./automation-executor")
+      ).buildAutomationContextBlock(automationCtx, ctx.objective);
+      contextBundle = {
+        markdown: block,
+        sources: ["automation"],
+        loadedAt: new Date().toISOString(),
+        promptLength: block.length,
+        estimatedInputTokens: estimateTokens(block),
+      };
+    } else {
+      contextBundle = await getAgentContext(agent, ctx);
+    }
   } catch (error) {
     console.warn("[agent-executor] context load failed, using minimal context:", error);
     contextBundle = {
@@ -242,7 +316,12 @@ export async function executeAgentWork(
 
     let usedAI = false;
     const systemPrompt = modelConfig
-      ? buildSystemPrompt(agent, ctx.stepKey, modelConfig.systemPrompt, modelConfig.reasoningLevel)
+      ? automationCtx
+        ? (await import("./automation-executor")).getAutomationSystemPrompt(
+            automationCtx.automationKind ?? "custom",
+            modelConfig.systemPrompt,
+          )
+        : buildSystemPrompt(agent, ctx.stepKey, modelConfig.systemPrompt, modelConfig.reasoningLevel)
       : "";
     const userPrompt = `${contextBlock}\n\n## Your Task\n${step?.taskDescription ?? "Complete assigned work for: " + ctx.objective}\n\nGenerate the complete deliverable now.`;
     const timeoutMs = getAgentTimeoutMs(ctx.stepKey, agent);
@@ -440,7 +519,12 @@ export async function executeAgentWork(
     }
 
     const governanceApproval = getStepGovernanceApproval(ctx.stepKey);
-    if (governanceApproval && ctx.workflowId) {
+    const { shouldSkipGovernanceForAutomation } = await import("./automation-executor");
+    if (
+      governanceApproval &&
+      ctx.workflowId &&
+      !shouldSkipGovernanceForAutomation(automationCtx, governanceApproval)
+    ) {
       const { isSessionExecutable } = await import("./session-state-engine");
       if (await isSessionExecutable(ctx.workflowId)) {
         await requestWorkflowApproval({
@@ -549,6 +633,23 @@ export async function executeAgentWork(
         await generateAgentIntelligence(agentId);
       } catch {
         // Intelligence refresh is best-effort after agent execution
+      }
+
+      if (automationCtx) {
+        const metrics = await (
+          await import("./automation-executor")
+        ).postAutomationActions(automationCtx, output, ctx.workflowId, ctx.projectId);
+        if (automationCtx.automationId) {
+          const { logAutomationRun } = await import("./agent-automations");
+          await logAutomationRun(
+            automationCtx.automationId,
+            ctx.workflowId,
+            automationCtx.triggerType ?? "execution",
+            "success",
+            "Automation step completed",
+            metrics,
+          );
+        }
       }
     }
 

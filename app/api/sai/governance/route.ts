@@ -40,6 +40,7 @@ export async function PATCH(request: Request) {
       approverRole: body.approverRole,
     });
     revalidatePath("/sai/governance");
+    revalidatePath("/sai/settings");
     return NextResponse.json({ policy });
   }
 
@@ -55,6 +56,7 @@ export async function PATCH(request: Request) {
       .single();
     if (error) throw new Error(error.message);
     revalidatePath("/sai/governance");
+    revalidatePath("/sai/settings");
     revalidatePath("/sai/projects");
     return NextResponse.json({ project: data });
   }

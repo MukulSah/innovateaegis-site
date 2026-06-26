@@ -13,8 +13,8 @@ export async function GET(request: Request) {
 
   try {
     if (syncOnly) {
-      const { processDueQueueEntries } = await import("@/lib/sai/recovery-queue");
-      await processDueQueueEntries().catch(() => {});
+      const { tickAutonomousSessions } = await import("@/lib/sai/session-execution-driver");
+      await tickAutonomousSessions().catch(() => {});
       const version = await getFounderSyncVersion();
       return NextResponse.json(version);
     }

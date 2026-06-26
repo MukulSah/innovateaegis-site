@@ -16,6 +16,11 @@ export async function GET(_request: Request, { params }: Params) {
   const { sessionId } = await params;
 
   try {
+    const { processDueQueueEntries } = await import("@/lib/sai/recovery-queue");
+    const { tickAutonomousSessions } = await import("@/lib/sai/session-execution-driver");
+    await processDueQueueEntries().catch(() => {});
+    await tickAutonomousSessions().catch(() => {});
+
     const [truth, handoffs, pendingApprovals, approvalHistory, artifacts, recovery] =
       await Promise.all([
         getSessionTruth(sessionId),

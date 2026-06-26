@@ -4,13 +4,13 @@ const STEP_TIMEOUT_MS: Record<string, number> = {
   ceo_strategy: 120_000,
   coo_execution: 120_000,
   design: 120_000,
-  requirements: 90_000,
-  tasks: 90_000,
-  implementation: 90_000,
-  validation: 45_000,
-  deployment: 45_000,
-  documentation: 45_000,
-  knowledge: 45_000,
+  requirements: 120_000,
+  tasks: 120_000,
+  implementation: 120_000,
+  validation: 90_000,
+  deployment: 90_000,
+  documentation: 90_000,
+  knowledge: 90_000,
 };
 
 function roleFromAgent(agent?: Agent | null): string {

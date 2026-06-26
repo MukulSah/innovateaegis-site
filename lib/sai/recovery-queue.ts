@@ -160,7 +160,7 @@ export async function getActiveQueueForSession(workflowRunId: string): Promise<A
     .from("ai_retry_queue")
     .select("*")
     .eq("workflow_run_id", workflowRunId)
-    .in("status", ["queued", "waiting", "processing"])
+    .in("status", ["queued", "waiting", "processing", "template_fallback"])
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -178,7 +178,7 @@ export async function getGlobalQueueStatus(): Promise<{
   const { data } = await supabase
     .from("ai_retry_queue")
     .select("*")
-    .in("status", ["queued", "waiting", "processing"])
+    .in("status", ["queued", "waiting", "processing", "template_fallback"])
     .order("next_attempt_at", { ascending: true })
     .limit(10);
 
@@ -202,15 +202,44 @@ export async function retryExecution(queueId: string): Promise<{ resumed: boolea
     .update({ status: "processing", updated_at: new Date().toISOString() })
     .eq("id", queueId);
 
-  const { triggerStepExecution } = await import("./step-execution");
-  await triggerStepExecution(entry.workflowRunId);
+  const { driveSessionExecution } = await import("./session-execution-driver");
+  const execution = await driveSessionExecution(entry.workflowRunId);
 
-  await supabase
-    .from("ai_retry_queue")
-    .update({ status: "completed", updated_at: new Date().toISOString() })
-    .eq("id", queueId);
+  if (execution.triggered) {
+    await supabase
+      .from("ai_retry_queue")
+      .update({ status: "completed", updated_at: new Date().toISOString() })
+      .eq("id", queueId);
+    return { resumed: true };
+  }
 
-  return { resumed: true };
+  const nextRetry = entry.retryCount + 1;
+  const delayMin = getNextQueueDelayMinutes(nextRetry);
+  if (delayMin === null) {
+    await supabase
+      .from("ai_retry_queue")
+      .update({
+        status: "template_fallback",
+        retry_count: nextRetry,
+        last_error: execution.message,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", queueId);
+  } else {
+    const nextAttempt = new Date(Date.now() + delayMin * 60_000).toISOString();
+    await supabase
+      .from("ai_retry_queue")
+      .update({
+        status: "waiting",
+        retry_count: nextRetry,
+        next_attempt_at: nextAttempt,
+        last_error: execution.message,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", queueId);
+  }
+
+  return { resumed: false };
 }
 
 export async function processDueQueueEntries(): Promise<number> {

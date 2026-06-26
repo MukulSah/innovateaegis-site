@@ -132,9 +132,32 @@ export async function advanceOrchestration(
     return;
   }
 
+  try {
+    const { runCooAutonomousTick } = await import("./coo-approval-engine");
+    await runCooAutonomousTick();
+  } catch {
+    // COO tick is best-effort before each advance
+  }
+
   const supabase = createSupabaseAdmin();
   const { isSessionExecutable } = await import("./session-state-engine");
   if (!(await isSessionExecutable(workflowId))) {
+    const { data: wfRow } = await supabase
+      .from("workflow_runs")
+      .select("session_status")
+      .eq("id", workflowId)
+      .maybeSingle();
+    const sessionStatus = (wfRow?.session_status as string) ?? "";
+
+    // AI retry queue — keep orchestration alive, do not mark completed.
+    if (sessionStatus === "waiting_for_ai_capacity") {
+      await supabase
+        .from("orchestration_runs")
+        .update({ status: "WAITING" })
+        .eq("workflow_id", workflowId);
+      return;
+    }
+
     await supabase
       .from("orchestration_runs")
       .update({ status: "COMPLETED", completed_at: new Date().toISOString() })
@@ -192,12 +215,20 @@ export async function advanceOrchestration(
     const { canStartArchitecture } = await import("./requirements-engine");
     const gate = await canStartArchitecture(workflowId, projectId);
     if (!gate.allowed) {
-      await supabase
-        .from("orchestration_runs")
-        .update({ status: "WAITING", current_step_key: "requirements" })
-        .eq("workflow_id", workflowId);
-      await updateSessionFields(workflowId, { sessionStatus: "waiting_approval" });
-      return;
+      const { processCooPendingApprovals, clearSessionWaitingApproval } = await import(
+        "./coo-approval-engine"
+      );
+      await processCooPendingApprovals(workflowId);
+      await clearSessionWaitingApproval(workflowId);
+      const retry = await canStartArchitecture(workflowId, projectId);
+      if (!retry.allowed) {
+        await supabase
+          .from("orchestration_runs")
+          .update({ status: "WAITING", current_step_key: "requirements" })
+          .eq("workflow_id", workflowId);
+        await updateSessionFields(workflowId, { sessionStatus: "waiting_approval" });
+        return;
+      }
     }
   }
 
@@ -376,30 +407,15 @@ export async function advanceOrchestration(
     const stepApproval = pendingApprovals.find((a) => a.approvalType === approvalType);
     const stepApprovalPending = Boolean(stepApproval);
 
-    if (stepApprovalPending && stepApproval) {
-      if (approvalType === "task_plan") {
-        const coo = findAgentForRole(agents, ["COO", "Chief Operating"]);
-        if (coo) {
-          await processApprovalDecision(stepApproval.id, "approved", coo.name, "COO approved task plan");
-        }
-      } else if (approvalType === "execution_readiness") {
-        const orchestrator = findAgentForRole(agents, ["Work Routing", "Orchestrator"]);
-        if (orchestrator) {
-          await processApprovalDecision(
-            stepApproval.id,
-            "approved",
-            orchestrator.name,
-            "Coordination escalation resolved",
-          );
-        }
-      } else if (approvalType === "requirements") {
-        await supabase
-          .from("orchestration_runs")
-          .update({ status: "WAITING", current_agent_id: agent.id })
-          .eq("workflow_id", workflowId);
-        await updateSessionFields(workflowId, { sessionStatus: "waiting_approval" });
-        return;
-      } else {
+    if (stepApprovalPending && stepApproval && approvalType) {
+      const { cooApproveStepIfEligible } = await import("./coo-approval-engine");
+      const canContinue = await cooApproveStepIfEligible(
+        workflowId,
+        projectId,
+        approvalType,
+        agents,
+      );
+      if (!canContinue) {
         await supabase
           .from("orchestration_runs")
           .update({ status: "WAITING", current_agent_id: agent.id })
@@ -493,9 +509,16 @@ export async function advanceOrchestration(
       detail: message,
     }).catch(() => {});
     await supabase
+      .from("workflow_run_steps")
+      .update({ status: "in_progress", started_at: new Date().toISOString() })
+      .eq("workflow_run_id", workflowId)
+      .eq("step_key", stepKey)
+      .neq("status", "completed");
+    await supabase
       .from("orchestration_runs")
-      .update({ status: "FAILED" })
+      .update({ status: "FAILED", current_step_key: stepKey })
       .eq("workflow_id", workflowId);
+    await updateSessionFields(workflowId, { sessionStatus: "executing" });
   }
 }
 

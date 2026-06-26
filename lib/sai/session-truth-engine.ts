@@ -11,11 +11,20 @@ import {
 import { SDLC_WORKFLOW } from "./sdlc";
 import type { SessionStatus } from "./types";
 
+function formatStepDuration(ms: number): string {
+  if (ms < 60_000) return `${Math.round(ms / 1000)}s`;
+  if (ms < 3_600_000) return `${Math.round(ms / 60_000)}m`;
+  return `${(ms / 3_600_000).toFixed(1)}h`;
+}
+
 export type SessionTimelineEvent = {
   stepKey: string;
   label: string;
   status: "pending" | "in_progress" | "completed" | "skipped";
+  startedAt: string | null;
   completedAt: string | null;
+  durationMs: number | null;
+  durationLabel: string | null;
   artifactName: string | null;
 };
 
@@ -91,7 +100,12 @@ function projectName(row: WorkflowRow): string {
 }
 
 function buildTimelineFromSteps(
-  stepRows: { step_key: string; status: string; completed_at: string | null }[],
+  stepRows: {
+    step_key: string;
+    status: string;
+    started_at: string | null;
+    completed_at: string | null;
+  }[],
   artifacts: { stepKey: string; artifactName: string | null }[],
 ): SessionTimelineEvent[] {
   const chain = SDLC_WORKFLOW.filter((s) =>
@@ -114,11 +128,36 @@ function buildTimelineFromSteps(
     const row = stepRows.find((s) => s.step_key === sdlc.key);
     const artifact = artifacts.find((a) => a.stepKey === sdlc.key);
     const status = (row?.status ?? "pending") as SessionTimelineEvent["status"];
+    const startedAt = row?.started_at ?? null;
+    const completedAt = row?.completed_at ?? null;
+    let durationMs: number | null = null;
+    let durationLabel: string | null = null;
+
+    if (status === "in_progress" && startedAt) {
+      durationMs = Date.now() - new Date(startedAt).getTime();
+      durationLabel = `running ${formatStepDuration(durationMs)}`;
+    } else if (status === "completed" && startedAt && completedAt) {
+      durationMs = new Date(completedAt).getTime() - new Date(startedAt).getTime();
+      durationLabel = `ran ${formatStepDuration(durationMs)}`;
+    } else if (status === "skipped") {
+      durationLabel = "skipped";
+    }
+
     return {
       stepKey: sdlc.key,
       label: sdlc.label,
-      status: status === "completed" ? "completed" : status === "in_progress" ? "in_progress" : status === "skipped" ? "skipped" : "pending",
-      completedAt: row?.completed_at ?? null,
+      status:
+        status === "completed"
+          ? "completed"
+          : status === "in_progress"
+            ? "in_progress"
+            : status === "skipped"
+              ? "skipped"
+              : "pending",
+      startedAt,
+      completedAt,
+      durationMs,
+      durationLabel,
       artifactName: artifact?.artifactName ?? null,
     };
   });
@@ -148,7 +187,7 @@ export async function getSessionTruth(sessionId: string): Promise<SessionTruth |
   const [stepsRes, artifacts, approvals, queueEntry, lastFailedEvent] = await Promise.all([
     supabase
       .from("workflow_run_steps")
-      .select("step_key, status, completed_at")
+      .select("step_key, status, started_at, completed_at")
       .eq("workflow_run_id", sessionId)
       .order("step_order"),
     getSessionArtifacts(sessionId),

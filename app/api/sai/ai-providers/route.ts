@@ -32,6 +32,7 @@ export async function POST(request: Request) {
   try {
     const provider = await upsertAIProvider(input);
     revalidatePath("/sai/settings/ai");
+    revalidatePath("/sai/settings");
     revalidatePath("/sai");
     return NextResponse.json({ provider }, { status: 201 });
   } catch (error) {

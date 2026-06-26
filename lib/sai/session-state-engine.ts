@@ -28,7 +28,10 @@ const NON_EXECUTABLE_STATUSES = new Set<SessionStatus>([
 ]);
 
 /** True when agents may still run work for this session. */
-export async function isSessionExecutable(sessionId: string): Promise<boolean> {
+export async function isSessionExecutable(
+  sessionId: string,
+  forceResume = false,
+): Promise<boolean> {
   const supabase = createSupabaseAdmin();
   const { data } = await supabase
     .from("workflow_runs")
@@ -39,6 +42,7 @@ export async function isSessionExecutable(sessionId: string): Promise<boolean> {
   if (!data) return false;
   if (data.status !== "running") return false;
   const sessionStatus = (data.session_status as SessionStatus) ?? "running";
+  if (forceResume && sessionStatus === "waiting_for_ai_capacity") return true;
   return !NON_EXECUTABLE_STATUSES.has(sessionStatus);
 }
 
@@ -267,6 +271,23 @@ export async function reconcileSessionState(sessionId: string): Promise<{
   }
 
   if (!(await isSessionExecutable(sessionId))) {
+    const { data: wfRow } = await supabase
+      .from("workflow_runs")
+      .select("session_status")
+      .eq("id", sessionId)
+      .maybeSingle();
+    const sessionStatus = (wfRow?.session_status as SessionStatus) ?? "running";
+
+    // Waiting on AI retry is a paused-but-active state — never halt.
+    if (sessionStatus === "waiting_for_ai_capacity") {
+      return {
+        repaired: false,
+        resumeExecution: false,
+        actions: ["Session waiting for AI retry — queue will resume automatically"],
+        state,
+      };
+    }
+
     await haltSessionExecution(sessionId, "Session is not active");
     return {
       repaired: true,

@@ -68,6 +68,12 @@ export async function getFounderActiveSessionOverview(): Promise<FounderSessionO
   } catch {
     // Idle READY repair is best-effort
   }
+  try {
+    const { tickAutonomousSessions } = await import("./session-execution-driver");
+    await tickAutonomousSessions();
+  } catch {
+    // Autonomous tick is best-effort on founder overview load
+  }
 
   const [monitor, approvals, recovery, readiness, resources, folders, driveDocs, aiReliability] =
     await Promise.all([

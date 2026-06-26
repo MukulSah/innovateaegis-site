@@ -150,24 +150,29 @@ export function resolveApprovalMode(
   approvalType: ApprovalType,
   context: Record<string, unknown> = {},
 ): ApprovalMode {
+  // Governance Center policy override — explicit auto always wins
+  if (policy?.mode === "auto") return "auto";
+
   if (workflowMode === "manual") return "manual";
   if (workflowMode === "autonomous" && !CRITICAL_TYPES.includes(approvalType)) return "auto";
 
   if (governanceProfile === "strict") {
-    if (policy?.mode === "auto" && approvalType === "document") return "auto";
-    return policy?.mode === "escalated" ? "escalated" : "manual";
+    if (policy?.mode === "escalated") return "escalated";
+    return "manual";
   }
 
   if (governanceProfile === "autonomous") {
     if (policy?.mode === "escalated") return "escalated";
-    if (context.securityRisk === "high" || context.databaseRisk === "high") return "escalated";
-    if (context.releaseType === "major") return "escalated";
+    // Hands-off: COO owns operational gates including major releases
+    if (context.securityRisk === "high" || context.databaseRisk === "high") {
+      return "escalated";
+    }
     return "auto";
   }
 
-  // standard
+  // standard — non-critical types default to auto; critical follow policy
   if (CRITICAL_TYPES.includes(approvalType)) {
-    return policy?.mode === "escalated" ? "escalated" : "manual";
+    return policy?.mode === "escalated" ? "escalated" : policy?.mode ?? "manual";
   }
   return policy?.mode ?? "auto";
 }
@@ -342,6 +347,26 @@ export async function requestWorkflowApproval(
   }
 
   if (!isAuto && input.workflowId) {
+    try {
+      const { shouldCooAutoApprove, findCooActor } = await import("./coo-approval-engine");
+      if (await shouldCooAutoApprove(input.projectId, input.approvalType, input.context ?? {})) {
+        const coo = await findCooActor();
+        if (coo) {
+          const decided = await processApprovalDecision(
+            approval.id,
+            "approved",
+            coo.name,
+            `COO auto-approved ${input.approvalType} — hands-off execution continues`,
+          );
+          return { approval: decided, canProceed: true };
+        }
+      }
+    } catch (error) {
+      console.warn("[governance] COO sync approval failed:", error);
+    }
+  }
+
+  if (!isAuto && input.workflowId) {
     const governanceStatus = isEscalated ? "escalated" : "waiting_for_approval";
     await supabase
       .from("workflow_runs")
@@ -355,6 +380,20 @@ export async function requestWorkflowApproval(
 
   if (isAuto) {
     await incrementAgentMetric(input.requestedBy, "auto_approved_actions");
+    if (input.workflowId) {
+      try {
+        const { findCooActor } = await import("./coo-approval-engine");
+        const coo = await findCooActor();
+        await processApprovalDecision(
+          approval.id,
+          "approved",
+          coo?.name ?? "SAI Auto-Approval Engine",
+          "Auto-approved — COO execution continues",
+        );
+      } catch (error) {
+        console.error("[governance] auto-approval side effects failed:", error);
+      }
+    }
   } else {
     await incrementAgentMetric(input.requestedBy, "approvals_requested");
     if (isEscalated) await incrementAgentMetric(input.requestedBy, "escalated_actions");
@@ -652,7 +691,7 @@ export async function processApprovalDecision(
         .update({
           governance_status: "normal",
           status: "running",
-          session_status: "running",
+          session_status: "executing",
         })
         .eq("id", approval.workflowId);
 

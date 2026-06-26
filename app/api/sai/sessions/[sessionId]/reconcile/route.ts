@@ -15,7 +15,7 @@ export async function POST(_request: Request, context: RouteContext) {
   try {
     const result = await reconcileSessionState(sessionId);
     if (result.repaired && result.resumeExecution) {
-      await triggerStepExecution(sessionId).catch(() => {});
+      await triggerStepExecution(sessionId, { forceResume: true }).catch(() => {});
     }
     return NextResponse.json(result);
   } catch (error) {

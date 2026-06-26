@@ -27,6 +27,10 @@ export function FounderCommandConsole({ agents, sessionTimeline }: Props) {
   const [objectiveOpen, setObjectiveOpen] = useState(false);
   const [projectId, setProjectId] = useState("");
   const [objective, setObjective] = useState("");
+  const [aiModelSelection, setAiModelSelection] = useState("auto");
+  const [aiOptions, setAiOptions] = useState<
+    { value: string; label: string; description: string }[]
+  >([{ value: "auto", label: "Auto — rotate from saved pool", description: "Loading…" }]);
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -48,20 +52,36 @@ export function FounderCommandConsole({ agents, sessionTimeline }: Props) {
   async function openObjectiveForm() {
     setObjectiveOpen(true);
     setError("");
-    if (projects.length > 0) return;
     try {
-      const res = await fetch("/api/sai/founder/objectives");
-      const data = await parseJsonResponse<{ projects: { id: string; name: string }[] }>(
-        res,
-        "/api/sai/founder/objectives",
-      );
-      if (res.ok) {
-        const list = data.projects ?? [];
-        setProjects(list);
-        if (list[0]) setProjectId(list[0].id);
+      const [projectsRes, aiRes] = await Promise.all([
+        projects.length > 0
+          ? Promise.resolve(null)
+          : fetch("/api/sai/founder/objectives"),
+        fetch("/api/sai/ai-providers/launch-options"),
+      ]);
+
+      if (projects.length === 0 && projectsRes) {
+        const data = await parseJsonResponse<{ projects: { id: string; name: string }[] }>(
+          projectsRes,
+          "/api/sai/founder/objectives",
+        );
+        if (projectsRes.ok) {
+          const list = data.projects ?? [];
+          setProjects(list);
+          if (list[0]) setProjectId(list[0].id);
+        }
+      }
+
+      if (aiRes.ok) {
+        const ai = await parseJsonResponse<{
+          options: { value: string; label: string; description: string }[];
+          defaultMode: string;
+        }>(aiRes, "/api/sai/ai-providers/launch-options");
+        setAiOptions(ai.options ?? [{ value: "auto", label: "Auto", description: "" }]);
+        setAiModelSelection(ai.defaultMode === "fixed" ? ai.options?.[1]?.value ?? "auto" : "auto");
       }
     } catch {
-      setProjects([]);
+      if (projects.length === 0) setProjects([]);
     }
   }
 
@@ -79,6 +99,7 @@ export function FounderCommandConsole({ agents, sessionTimeline }: Props) {
           projectId,
           objective: objective.trim(),
           creationMode: "instant",
+          aiModelSelection,
         }),
       });
       const data = await parseJsonResponse<{ error?: string; sessionId?: string }>(res, route);
@@ -210,6 +231,24 @@ export function FounderCommandConsole({ agents, sessionTimeline }: Props) {
                 className={inputClass}
                 placeholder="What should the company execute in this session?"
               />
+            </label>
+            <label className="block sm:col-span-2">
+              <span className="mb-1 block text-xs text-white/50">AI Model</span>
+              <select
+                value={aiModelSelection}
+                onChange={(e) => setAiModelSelection(e.target.value)}
+                className={`${inputClass} bg-[#0d0d14]`}
+              >
+                {aiOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-[10px] text-white/40">
+                {aiOptions.find((o) => o.value === aiModelSelection)?.description ??
+                  "Auto picks from your saved NVIDIA NIM pool and rotates on failure."}
+              </p>
             </label>
           </div>
           {error && <p className="mt-2 text-sm text-red-300">{error}</p>}

@@ -154,6 +154,111 @@ export const products: Product[] = [
     accentFrom: "#0ea5e9",
     accentTo: "#3b82f6",
   },
+  {
+    slug: "manavya",
+    name: "Manavya AI",
+    category: "users",
+    tagline: "Intelligence born of creation.",
+    description:
+      "Manavya is a unified AI platform powered by the M2 intelligence engine, built for daily tasks, reasoning, expert-level coding, and collaborative workspaces.",
+    whatItDoes: [
+      "Powers daily productivity tasks and complex reasoning workflows.",
+      "Assists in advanced software engineering with project-aware coding.",
+      "Enables multi-modal creativity with image and video generation.",
+      "Fosters teamwork through shared workspaces and durable project context in Cowork.",
+    ],
+    features: [
+      {
+        title: "Manavya M2 Core",
+        text: "The central cognitive routing, planning, and verification engine.",
+      },
+      {
+        title: "Playground & Chat",
+        text: "Interactive canvas for rapid model testing and daily task orchestration.",
+      },
+      {
+        title: "Advanced Code & Reasoning",
+        text: "Project-aware developer assistance that builds, reviews, and debugs code.",
+      },
+      {
+        title: "Manavya Cowork",
+        text: "Durable shared workspaces that maintain goals, decisions, and files.",
+      },
+    ],
+    ctaLabel: "Launch Manavya M2",
+    accentFrom: "#ff6b57",
+    accentTo: "#f5c77e",
+  },
+  {
+    slug: "unite",
+    name: "Unite Platform",
+    category: "business",
+    tagline: "The unified operating system for company alignment.",
+    description:
+      "Unite aggregates organizational data, aligns department priorities, and streamlines cross-functional workflows, keeping everyone synced with real-time operations.",
+    whatItDoes: [
+      "Centralizes company goals and departments in one system.",
+      "Coordinates team milestones and tracks operational blockers.",
+      "Provides clear department dashboards to reduce status meetings.",
+      "Aligns engineering, product, and leadership tracks.",
+    ],
+    features: [
+      {
+        title: "Unified Goals",
+        text: "Keep cross-functional teams aligned on organizational targets.",
+      },
+      {
+        title: "Blocker Tracking",
+        text: "Highlight operational hurdles and assign resolution owners.",
+      },
+      {
+        title: "Milestones",
+        text: "Visualize development phases and product release tracks.",
+      },
+      {
+        title: "Sync Engine",
+        text: "Reduce meeting overhead with continuous department status feeds.",
+      },
+    ],
+    ctaLabel: "Request Demo",
+    accentFrom: "#ec4899",
+    accentTo: "#f43f5e",
+  },
+  {
+    slug: "sai",
+    name: "SAI",
+    category: "business",
+    tagline: "Autonomous Software Agent Intelligence for enterprise execution.",
+    description:
+      "SAI is an enterprise-grade agent orchestration dashboard that runs workflows, tracks project history, compiles releases, and automates operational processes.",
+    whatItDoes: [
+      "Orchestrates autonomous agents to run dev and business tasks.",
+      "Compiles system releases and tracks software deployments.",
+      "Manages team activities and logs organizational decision memory.",
+      "Assists company executives with detailed project health assessments.",
+    ],
+    features: [
+      {
+        title: "Agent Dashboard",
+        text: "Spawn, configure, and monitor AI agents running background workflows.",
+      },
+      {
+        title: "Release Compiler",
+        text: "Automate build assemblies and coordinate software deployments.",
+      },
+      {
+        title: "Organizational Memory",
+        text: "Capture and search historical team decisions and project changes.",
+      },
+      {
+        title: "Executive Insights",
+        text: "Access deep metrics and health analysis for ongoing projects.",
+      },
+    ],
+    ctaLabel: "Explore SAI",
+    accentFrom: "#8b5cf6",
+    accentTo: "#6366f1",
+  },
 ];
 
 export const productGroups = {

@@ -27,16 +27,32 @@ export function AgentAIConfigPanel({ agentId, config, modelMode, providers }: Pr
   const [message, setMessage] = useState("");
 
   if (modelMode !== "per_agent") {
+    const defaultProvider = providers.find((p) => p.defaultProvider) ?? providers[0];
     return (
       <section className="enterprise-glass rounded-xl border border-white/10 p-5">
         <h3 className="text-sm font-semibold text-white">Agent AI Settings</h3>
         <p className="mt-2 text-xs text-white/45">
-          Company is using a single provider for all agents. Enable per-agent models in{" "}
-          <a href="/sai/settings/ai" className="text-purple-300 hover:text-purple-200">
-            AI Configuration
-          </a>
-          .
+          All agents use the company default provider
+          {defaultProvider
+            ? ` (${getProviderLabel(defaultProvider.providerName)} · ${defaultProvider.model})`
+            : ""}
+          . Session launch picks Auto or a fixed model; failures rotate through your saved pool.
         </p>
+        {defaultProvider && (
+          <p className="mt-2 text-[10px] text-cyan-200/80">
+            Failover pool:{" "}
+            {defaultProvider.autoRotateModels
+              ? defaultProvider.modelPool.length > 0
+                ? `${defaultProvider.modelPool.length} models configured`
+                : "Auto (full catalog on failure)"
+              : defaultProvider.modelPool.length > 0
+                ? `${defaultProvider.modelPool.length} manual fallbacks`
+                : "Primary model only"}
+          </p>
+        )}
+        <a href="/sai/settings?tab=ai" className="mt-3 inline-block text-xs text-purple-300 hover:text-purple-200">
+          Edit AI providers & model pool →
+        </a>
       </section>
     );
   }

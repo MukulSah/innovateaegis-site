@@ -209,8 +209,21 @@ function SessionCreatePanel({
   const [scheduledAt, setScheduledAt] = useState("");
   const [recurrenceRule, setRecurrenceRule] = useState("weekly");
   const [triggerEvent, setTriggerEvent] = useState("critical_incident");
+  const [aiModelSelection, setAiModelSelection] = useState("auto");
+  const [aiOptions, setAiOptions] = useState<
+    { value: string; label: string; description: string }[]
+  >([{ value: "auto", label: "Auto — rotate from saved pool", description: "" }]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    fetch("/api/sai/ai-providers/launch-options")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.options) setAiOptions(data.options);
+      })
+      .catch(() => {});
+  }, []);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -220,9 +233,10 @@ function SessionCreatePanel({
     setError("");
     try {
       const route = "/api/sai/sessions/spawn";
+      const aiField = { aiModelSelection };
       const body =
         mode === "instant"
-          ? { objective: objective.trim(), projectId, creationMode: "instant" }
+          ? { objective: objective.trim(), projectId, creationMode: "instant", ...aiField }
           : {
               objective: objective.trim(),
               projectId,
@@ -232,6 +246,7 @@ function SessionCreatePanel({
               recurrenceRule: mode === "recurring" ? recurrenceRule : undefined,
               triggerMetadata:
                 mode === "triggered" ? { eventType: triggerEvent, armed: true } : undefined,
+              ...aiField,
             };
 
       const res = await fetch(route, {
@@ -297,6 +312,17 @@ function SessionCreatePanel({
             {projects.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
+              </option>
+            ))}
+          </select>
+          <select
+            value={aiModelSelection}
+            onChange={(e) => setAiModelSelection(e.target.value)}
+            className="w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white"
+          >
+            {aiOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
               </option>
             ))}
           </select>
@@ -443,7 +469,7 @@ function DashboardSection({
         <div className="enterprise-glass rounded-xl border border-purple-400/20 p-5 lg:col-span-2">
           <div className="flex items-center justify-between">
             <p className="text-[10px] uppercase tracking-wider text-white/40">Automation Status</p>
-            <Link href="/sai/sessions?section=automation" className="text-[10px] text-purple-300 hover:underline">
+            <Link href="/sai/automations" className="text-[10px] text-purple-300 hover:underline">
               Manage →
             </Link>
           </div>
@@ -1198,8 +1224,8 @@ function SettingsSection() {
         <li>All sessions become permanent searchable records</li>
         <li>Session lifecycle: Draft → Planning → Ready → Executing → Review → Approval → Knowledge Capture → Completed</li>
       </ul>
-      <Link href="/sai/settings" className="mt-4 inline-block text-xs text-purple-300 hover:underline">
-        Company Settings →
+      <Link href="/sai/settings?tab=governance" className="mt-4 inline-block text-xs text-purple-300 hover:underline">
+        Company Settings → Governance
       </Link>
     </section>
   );

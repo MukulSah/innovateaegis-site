@@ -493,6 +493,8 @@ export interface AIProvider {
   keyReadable: boolean;
   endpoint: string;
   model: string;
+  modelPool: string[];
+  autoRotateModels: boolean;
   enabled: boolean;
   defaultProvider: boolean;
   createdAt: string;
@@ -509,6 +511,7 @@ export interface CompanyAISettings {
   defaultProviderName?: string | null;
   fallbackProviderId?: string | null;
   fallbackProviderName?: string | null;
+  autoModelRotation?: boolean;
   updatedAt: string;
 }
 

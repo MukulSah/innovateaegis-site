@@ -81,7 +81,7 @@ export const HEADQUARTERS_NAV_ITEMS: HeadquartersNavItem[] = [
       { label: "Cancelled", href: "/sai/sessions?section=registry-cancelled" },
       { label: "Session Templates", href: "/sai/sessions?section=templates" },
       { label: "Duty Center", href: "/sai/sessions?section=duties" },
-      { label: "Automation Center", href: "/sai/sessions?section=automation" },
+      { label: "Automations", href: "/sai/automations" },
       { label: "Agent Workspace", href: "/sai/sessions?section=agents" },
       { label: "Session Intelligence", href: "/sai/sessions?section=intelligence" },
       { label: "Analytics", href: "/sai/sessions?section=analytics" },
@@ -101,6 +101,12 @@ export const HEADQUARTERS_NAV_ITEMS: HeadquartersNavItem[] = [
     href: "/sai/settings",
     icon: "⚙",
     description: "Company configuration and integrations",
+    children: [
+      { label: "Governance", href: "/sai/settings?tab=governance" },
+      { label: "AI Providers", href: "/sai/settings?tab=ai" },
+      { label: "Resources", href: "/sai/settings?tab=resources" },
+      { label: "Integrations", href: "/sai/settings?tab=integrations" },
+    ],
   },
 ];
 
@@ -128,7 +134,7 @@ export const FOUNDER_CREATE_ACTIONS = [
   { id: "product", label: "Product", href: "/sai/projects" },
   { id: "customer", label: "Customer", href: "/sai/customers" },
   { id: "meeting", label: "Meeting", href: "/sai/founder?tab=meetings" },
-  { id: "workflow", label: "Workflow", href: "/sai/sessions?section=automation" },
+  { id: "workflow", label: "Workflow", href: "/sai/automations" },
   { id: "knowledge", label: "Knowledge Record", href: "/sai/records" },
 ] as const;
 
@@ -136,9 +142,9 @@ export const FOUNDER_CREATE_ACTIONS = [
 export const HEADQUARTERS_LEGACY_REDIRECTS: Record<string, string> = {
   "/sai": "/sai/founder",
   "/sai/execution": "/sai/sessions",
-  "/sai/control": "/sai/sessions?section=automation",
+  "/sai/control": "/sai/automations",
   "/sai/operations": "/sai/sessions",
-  "/sai/automation": "/sai/sessions?section=automation",
+  "/sai/automation": "/sai/automations",
   "/sai/agents": "/sai/organization?section=agent-center",
   "/sai/employees": "/sai/organization?section=employees",
   "/sai/tasks": "/sai/sessions",

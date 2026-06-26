@@ -339,7 +339,12 @@ export async function analyzeSessionRecovery(sessionId: string): Promise<Session
     progress: stepProgress,
     artifactCount: artifacts.length,
     recommendedAction,
-    canResume: (isStalled || session.sessionStatus === "recovery") && !needsFinalization && !needsFounderReview,
+    canResume:
+      (isStalled ||
+        session.sessionStatus === "recovery" ||
+        session.sessionStatus === "waiting_for_ai_capacity") &&
+      !needsFinalization &&
+      !needsFounderReview,
     canRequestClose: false,
     canForceClose: !isTerminal,
     canCreateNewSession: isTerminal || stallOverrideAllowed,
@@ -612,10 +617,14 @@ export async function recoverSession(sessionId: string): Promise<SessionRecovery
   const { reconcileSessionState } = await import("./session-state-engine");
   await reconcileSessionState(sessionId);
 
-  const { triggerStepExecution } = await import("./step-execution");
+  const { driveSessionExecution } = await import("./session-execution-driver");
   const { resolveStaleEscalations } = await import("./escalation-resolver");
-  await triggerStepExecution(sessionId).catch(() => {});
+  const execution = await driveSessionExecution(sessionId);
   await resolveStaleEscalations(sessionId).catch(() => {});
+
+  if (!execution.triggered) {
+    throw new Error(execution.message);
+  }
 
   const updated = await analyzeSessionRecovery(sessionId);
   if (!updated) throw new Error("Recovery completed but analysis failed");

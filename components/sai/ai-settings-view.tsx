@@ -8,6 +8,7 @@ import {
   getProviderLabel,
   listSupportedProviders,
 } from "@/lib/sai/ai-provider-catalog";
+import { supportsModelCatalog } from "@/lib/sai/ai-model-catalog";
 import type {
   AIProvider,
   AIProviderName,
@@ -28,21 +29,31 @@ type FormState = {
   apiKey: string;
   endpoint: string;
   model: string;
+  modelPool: string[];
+  autoRotateModels: boolean;
   enabled: boolean;
   defaultProvider: boolean;
 };
+
+type CatalogModel = { id: string; name: string; ownedBy?: string };
 
 export function AISettingsView({ providers, settings, isAdmin }: Props) {
   const router = useRouter();
   const [modelMode, setModelMode] = useState<AIModelMode>(settings.modelMode);
   const [executionMode, setExecutionMode] = useState<AIExecutionMode>(settings.executionMode ?? "free");
+  const [autoModelRotation, setAutoModelRotation] = useState(settings.autoModelRotation ?? true);
   const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [catalogModels, setCatalogModels] = useState<CatalogModel[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogError, setCatalogError] = useState("");
   const [form, setForm] = useState<FormState>({
     providerName: "openai",
     apiKey: "",
     endpoint: getDefaultEndpoint("openai"),
     model: getDefaultModel("openai"),
+    modelPool: [],
+    autoRotateModels: false,
     enabled: true,
     defaultProvider: false,
   });
@@ -62,9 +73,13 @@ export function AISettingsView({ providers, settings, isAdmin }: Props) {
       apiKey: "",
       endpoint: getDefaultEndpoint("openai"),
       model: getDefaultModel("openai"),
+      modelPool: [],
+      autoRotateModels: false,
       enabled: true,
       defaultProvider: providers.length === 0,
     });
+    setCatalogModels([]);
+    setCatalogError("");
     setEditingKeyReadable(false);
     setTestResult(null);
     setFormOpen(true);
@@ -78,9 +93,13 @@ export function AISettingsView({ providers, settings, isAdmin }: Props) {
       apiKey: "",
       endpoint: p.endpoint || getDefaultEndpoint(p.providerName),
       model: p.model,
+      modelPool: p.modelPool ?? [],
+      autoRotateModels: p.autoRotateModels ?? false,
       enabled: p.enabled,
       defaultProvider: p.defaultProvider,
     });
+    setCatalogModels([]);
+    setCatalogError("");
     setTestResult(null);
     setFormOpen(true);
   }
@@ -91,7 +110,57 @@ export function AISettingsView({ providers, settings, isAdmin }: Props) {
       providerName: name,
       endpoint: getDefaultEndpoint(name),
       model: getDefaultModel(name),
+      modelPool: [],
+      autoRotateModels: false,
     }));
+    setCatalogModels([]);
+    setCatalogError("");
+  }
+
+  async function loadCatalogModels() {
+    setCatalogLoading(true);
+    setCatalogError("");
+    try {
+      const res = await fetch("/api/sai/ai-providers/models", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...(editingId ? { providerId: editingId } : {}),
+          providerName: form.providerName,
+          ...(form.apiKey.trim() ? { apiKey: form.apiKey.trim() } : {}),
+          endpoint: form.endpoint,
+          model: form.model,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load models");
+      const models = (data.models ?? []) as CatalogModel[];
+      setCatalogModels(models);
+      if (models.length === 0) {
+        setCatalogError("No models returned from catalog.");
+      } else if (!form.model && models[0]) {
+        setForm((f) => ({ ...f, model: models[0].id }));
+      }
+    } catch (err) {
+      setCatalogError(err instanceof Error ? err.message : "Failed to load catalog");
+      setCatalogModels([]);
+    } finally {
+      setCatalogLoading(false);
+    }
+  }
+
+  function togglePoolModel(modelId: string) {
+    setForm((f) => {
+      const pool = new Set(f.modelPool);
+      if (pool.has(modelId)) pool.delete(modelId);
+      else pool.add(modelId);
+      return { ...f, modelPool: Array.from(pool) };
+    });
+  }
+
+  function useAllCatalogForRotation() {
+    const ids = catalogModels.map((m) => m.id).filter((id) => id !== form.model);
+    setForm((f) => ({ ...f, modelPool: ids, autoRotateModels: true }));
   }
 
   async function handleTest() {
@@ -238,6 +307,18 @@ export function AISettingsView({ providers, settings, isAdmin }: Props) {
     router.refresh();
   }
 
+  async function saveAutoModelRotation(enabled: boolean) {
+    setAutoModelRotation(enabled);
+    await fetch("/api/sai/ai-settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ autoModelRotation: enabled }),
+    });
+    router.refresh();
+  }
+
+  const catalogCapable = supportsModelCatalog(form.providerName);
+
   const inputClass =
     "w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-purple-400/40";
 
@@ -288,6 +369,40 @@ export function AISettingsView({ providers, settings, isAdmin }: Props) {
               {mode}
             </button>
           ))}
+        </div>
+      </section>
+
+      <section className="enterprise-glass rounded-xl border border-purple-400/20 p-5">
+        <h2 className="text-sm font-semibold text-white">Model Failover</h2>
+        <p className="mt-1 text-xs text-white/45">
+          When enabled, agent and session API calls retry with alternate models from your NVIDIA NIM (or
+          other catalog) pool if the primary model fails — before switching to a fallback provider.
+        </p>
+        <div className="mt-4 flex flex-wrap gap-3">
+          <button
+            type="button"
+            disabled={!isAdmin}
+            onClick={() => saveAutoModelRotation(true)}
+            className={`rounded-lg border px-4 py-2 text-xs font-medium transition-colors ${
+              autoModelRotation
+                ? "border-purple-400/40 bg-purple-500/20 text-white"
+                : "border-white/10 text-white/50 hover:bg-white/5"
+            }`}
+          >
+            Auto-rotate models on failure
+          </button>
+          <button
+            type="button"
+            disabled={!isAdmin}
+            onClick={() => saveAutoModelRotation(false)}
+            className={`rounded-lg border px-4 py-2 text-xs font-medium transition-colors ${
+              !autoModelRotation
+                ? "border-purple-400/40 bg-purple-500/20 text-white"
+                : "border-white/10 text-white/50 hover:bg-white/5"
+            }`}
+          >
+            Primary model only
+          </button>
         </div>
       </section>
 
@@ -345,10 +460,93 @@ export function AISettingsView({ providers, settings, isAdmin }: Props) {
               <input value={form.endpoint} onChange={(e) => setForm({ ...form, endpoint: e.target.value })} className={inputClass} />
             </label>
             <label className="block">
-              <span className="mb-1 block text-xs text-white/50">Model</span>
-              <input value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} className={inputClass} />
+              <span className="mb-1 block text-xs text-white/50">Primary Model</span>
+              {catalogModels.length > 0 ? (
+                <select
+                  value={form.model}
+                  onChange={(e) => setForm({ ...form, model: e.target.value })}
+                  className={`${inputClass} bg-[#0d0d14]`}
+                >
+                  {catalogModels.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.id}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} className={inputClass} />
+              )}
             </label>
+
+            {catalogCapable && (
+              <div className="sm:col-span-2 space-y-3 rounded-lg border border-cyan-400/20 bg-cyan-500/5 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-semibold text-cyan-200">Model Catalog</p>
+                    <p className="mt-0.5 text-[10px] text-white/45">
+                      Load all models from {getProviderLabel(form.providerName)} via your API key and endpoint.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={loadCatalogModels}
+                    disabled={catalogLoading}
+                    className="rounded-lg border border-cyan-400/30 px-3 py-1.5 text-xs text-cyan-200 disabled:opacity-60"
+                  >
+                    {catalogLoading ? "Loading…" : "Load Catalog Models"}
+                  </button>
+                </div>
+                {catalogError && <p className="text-xs text-red-300">{catalogError}</p>}
+                {catalogModels.length > 0 && (
+                  <>
+                    <p className="text-[10px] text-white/40">
+                      {catalogModels.length} models available · select fallbacks or auto-rotate all
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={useAllCatalogForRotation}
+                        className="rounded border border-purple-400/30 px-2 py-1 text-[10px] text-purple-200"
+                      >
+                        Use all for auto-failover
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setForm((f) => ({ ...f, modelPool: [] }))}
+                        className="rounded border border-white/10 px-2 py-1 text-[10px] text-white/50"
+                      >
+                        Clear pool
+                      </button>
+                    </div>
+                    <div className="max-h-40 overflow-y-auto rounded border border-white/10 bg-black/20 p-2">
+                      {catalogModels.map((m) => (
+                        <label
+                          key={m.id}
+                          className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-xs text-white/70 hover:bg-white/5"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={form.modelPool.includes(m.id)}
+                            onChange={() => togglePoolModel(m.id)}
+                          />
+                          <span className="font-mono text-[11px]">{m.id}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
             <div className="flex flex-col gap-2 sm:col-span-2">
+              <label className="flex items-center gap-2 text-sm text-white/70">
+                <input
+                  type="checkbox"
+                  checked={form.autoRotateModels}
+                  onChange={(e) => setForm({ ...form, autoRotateModels: e.target.checked })}
+                />
+                Auto-rotate through model pool on failure (uses full catalog if pool empty)
+              </label>
               <label className="flex items-center gap-2 text-sm text-white/70">
                 <input type="checkbox" checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />
                 Enabled
@@ -427,6 +625,7 @@ export function AISettingsView({ providers, settings, isAdmin }: Props) {
             <tr className="border-b border-white/10 text-[10px] uppercase tracking-wider text-white/40">
               <th className="px-4 py-3">Provider</th>
               <th className="px-4 py-3">Model</th>
+              <th className="px-4 py-3">Failover</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Default</th>
               {isAdmin && <th className="px-4 py-3">Actions</th>}
@@ -435,7 +634,7 @@ export function AISettingsView({ providers, settings, isAdmin }: Props) {
           <tbody>
             {providers.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-white/40">
+                <td colSpan={isAdmin ? 6 : 5} className="px-4 py-8 text-center text-white/40">
                   No AI providers configured. Add one to enable agent runtime.
                 </td>
               </tr>
@@ -448,7 +647,16 @@ export function AISettingsView({ providers, settings, isAdmin }: Props) {
                       {p.keyReadable ? "Key configured (readable)" : p.hasApiKey ? "Key saved (re-enter to use)" : "No key"}
                     </p>
                   </td>
-                  <td className="px-4 py-3 text-white/70">{p.model}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-white/70">{p.model}</td>
+                  <td className="px-4 py-3 text-xs text-white/55">
+                    {p.autoRotateModels
+                      ? p.modelPool.length > 0
+                        ? `${p.modelPool.length} in pool`
+                        : "Auto (full catalog)"
+                      : p.modelPool.length > 0
+                        ? `${p.modelPool.length} manual`
+                        : "—"}
+                  </td>
                   <td className="px-4 py-3">
                     <span className={p.enabled ? "text-emerald-300" : "text-white/40"}>
                       {p.enabled ? "Enabled" : "Disabled"}

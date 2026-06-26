@@ -14,6 +14,8 @@ export type AgentModelConfig = {
   maxTokens: number;
   reasoningLevel: ReasoningLevel;
   systemPrompt: string;
+  /** Additional models to try on same provider before fallback provider. */
+  modelAlternates?: string[];
 };
 
 export type RetryExecutionInput = {
@@ -45,6 +47,7 @@ export type RetryExecutionSuccess = RetryDiagnostics & {
   model: string;
   attemptCount: number;
   usedFallback: boolean;
+  usedModelRotation: boolean;
   errors: string[];
 };
 
@@ -135,6 +138,7 @@ export async function executeWithRetryPolicy(
   const tryConfig = async (
     config: AgentModelConfig,
     label: string,
+    options?: { usedFallback?: boolean; usedModelRotation?: boolean },
   ): Promise<RetryExecutionSuccess | null> => {
     try {
       const result = await attemptCompletion(
@@ -154,6 +158,7 @@ export async function executeWithRetryPolicy(
         promptLength: input.systemPrompt.length + input.userPrompt.length,
         agentId: input.agentId,
         workflowId: input.workflowId,
+        label,
       });
       return {
         ok: true,
@@ -163,7 +168,8 @@ export async function executeWithRetryPolicy(
         provider: config.providerName,
         model: config.model,
         attemptCount,
-        usedFallback: label === "fallback",
+        usedFallback: options?.usedFallback ?? false,
+        usedModelRotation: options?.usedModelRotation ?? false,
         errors,
         ...buildDiagnostics(
           input.systemPrompt,
@@ -210,6 +216,10 @@ export async function executeWithRetryPolicy(
       });
       if (success.usedFallback) {
         await input.onStatusMessage?.("Fallback provider used successfully. Execution continues.");
+      } else if (success.usedModelRotation) {
+        await input.onStatusMessage?.(
+          `Recovered using alternate model (${success.model}). Execution continues.`,
+        );
       }
       return success;
     }
@@ -219,10 +229,36 @@ export async function executeWithRetryPolicy(
     await input.onStatusMessage?.(`Retry ${i + 1}/${RETRY_DELAYS_MS.length} failed.`);
   }
 
+  const alternates = input.primary.modelAlternates ?? [];
+  for (const alternateModel of alternates) {
+    attemptCount += 1;
+    await input.onStatusMessage?.(`Trying alternate model: ${alternateModel}`);
+    const altConfig: AgentModelConfig = { ...input.primary, model: alternateModel };
+    const altSuccess = await tryConfig(altConfig, `alternate-${alternateModel}`, {
+      usedModelRotation: true,
+    });
+    if (altSuccess) {
+      await recordAIUsage({
+        provider: altSuccess.provider,
+        model: altSuccess.model,
+        agent: input.agentName,
+        agentId: input.agentId,
+        inputTokens: altSuccess.inputTokens,
+        outputTokens: altSuccess.outputTokens,
+        workflowId: input.workflowId,
+        sessionId: input.runtimeSessionId,
+      });
+      await input.onStatusMessage?.(
+        `Recovered using alternate model (${alternateModel}). Execution continues.`,
+      );
+      return altSuccess;
+    }
+  }
+
   if (input.fallback) {
     await input.onStatusMessage?.("Switching to fallback provider.");
     attemptCount += 1;
-    const fallbackSuccess = await tryConfig(input.fallback, "fallback");
+    const fallbackSuccess = await tryConfig(input.fallback, "fallback", { usedFallback: true });
     if (fallbackSuccess) {
       await recordAIUsage({
         provider: fallbackSuccess.provider,

@@ -317,25 +317,30 @@ export async function executeApprovedFounderAction(
           await retryExecution(queue.id as string);
           resultMessage = "Retry execution initiated.";
         } else if (sessionId) {
-          const { triggerStepExecution } = await import("./step-execution");
-          await triggerStepExecution(sessionId);
-          resultMessage = "Step execution triggered.";
+          const { driveSessionExecution } = await import("./session-execution-driver");
+          const execution = await driveSessionExecution(sessionId);
+          resultMessage = execution.message;
         }
         break;
       }
       case "resume_session":
         if (sessionId) {
-          await recoverSession(sessionId);
-          resultMessage = "Session resume initiated.";
+          const { driveSessionExecution } = await import("./session-execution-driver");
+          const execution = await driveSessionExecution(sessionId);
+          resultMessage = execution.message;
         }
         break;
       case "reconcile_state":
         if (sessionId) {
           const { reconcileSessionState } = await import("./session-state-engine");
-          const { triggerStepExecution } = await import("./step-execution");
           const result = await reconcileSessionState(sessionId);
-          if (result.repaired) await triggerStepExecution(sessionId).catch(() => {});
-          resultMessage = result.repaired ? "State reconciled and execution triggered." : "No drift detected.";
+          if (result.repaired || result.resumeExecution) {
+            const { driveSessionExecution } = await import("./session-execution-driver");
+            const execution = await driveSessionExecution(sessionId);
+            resultMessage = execution.message;
+          } else {
+            resultMessage = "No drift detected.";
+          }
         }
         break;
       case "force_finalize":

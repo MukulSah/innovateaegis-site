@@ -20,6 +20,8 @@ export type ResolvedAIProvider = {
   apiKey: string;
   endpoint: string;
   model: string;
+  modelPool: string[];
+  autoRotateModels: boolean;
   enabled: boolean;
   keySource: AIProviderKeySource;
   keyReadable: boolean;
@@ -31,7 +33,7 @@ export type AIProviderResolution = {
 };
 
 function toResolved(
-  row: { provider: { id: string; providerName: AIProviderName; endpoint: string; model: string; enabled: boolean }; apiKey: string },
+  row: { provider: { id: string; providerName: AIProviderName; endpoint: string; model: string; modelPool?: string[]; autoRotateModels?: boolean; enabled: boolean }; apiKey: string },
   keySource: AIProviderKeySource,
 ): ResolvedAIProvider {
   const endpoint = row.provider.endpoint || getDefaultEndpoint(row.provider.providerName);
@@ -41,6 +43,8 @@ function toResolved(
     apiKey: row.apiKey,
     endpoint,
     model: row.provider.model,
+    modelPool: row.provider.modelPool ?? [],
+    autoRotateModels: row.provider.autoRotateModels ?? false,
     enabled: row.provider.enabled,
     keySource,
     keyReadable: Boolean(row.apiKey),
@@ -126,6 +130,8 @@ export async function resolveAIProviderForTest(input: {
       apiKey: bodyKey,
       endpoint: input.endpoint?.trim() || getDefaultEndpoint(input.providerName),
       model: input.model.trim(),
+      modelPool: [],
+      autoRotateModels: false,
       enabled: true,
       keySource: "form_override",
       keyReadable: true,

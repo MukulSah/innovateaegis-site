@@ -16,11 +16,18 @@ type ProviderRow = {
   api_key_encrypted: string;
   endpoint: string;
   model: string;
+  model_pool?: string[] | null;
+  auto_rotate_models?: boolean | null;
   enabled: boolean;
   default_provider: boolean;
   created_at: string;
   updated_at: string;
 };
+
+function parseModelPool(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((m) => String(m).trim()).filter(Boolean);
+}
 
 function mapRow(row: ProviderRow): AIProvider {
   const apiKey = row.api_key_encrypted ? decryptSecret(row.api_key_encrypted) : "";
@@ -31,6 +38,8 @@ function mapRow(row: ProviderRow): AIProvider {
     keyReadable: Boolean(apiKey),
     endpoint: row.endpoint,
     model: row.model,
+    modelPool: parseModelPool(row.model_pool),
+    autoRotateModels: Boolean(row.auto_rotate_models),
     enabled: row.enabled,
     defaultProvider: row.default_provider,
     createdAt: row.created_at,
@@ -113,6 +122,8 @@ export type AIProviderInput = {
   apiKey?: string;
   endpoint?: string;
   model?: string;
+  modelPool?: string[];
+  autoRotateModels?: boolean;
   enabled?: boolean;
   defaultProvider?: boolean;
 };
@@ -135,17 +146,37 @@ export async function upsertAIProvider(
     default_provider: input.defaultProvider ?? false,
   };
 
+  if (input.modelPool !== undefined) {
+    payload.model_pool = input.modelPool;
+  }
+  if (input.autoRotateModels !== undefined) {
+    payload.auto_rotate_models = input.autoRotateModels;
+  }
+
   if (input.apiKey && input.apiKey !== "••••••••••••") {
     payload.api_key_encrypted = encryptSecret(input.apiKey);
   }
 
   if (existingId) {
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from("ai_providers")
       .update(payload)
       .eq("id", existingId)
       .select("*")
       .single();
+
+    if (error?.message.includes("auto_rotate_models") || error?.message.includes("model_pool")) {
+      const legacyPayload = { ...payload };
+      delete legacyPayload.model_pool;
+      delete legacyPayload.auto_rotate_models;
+      ({ data, error } = await supabase
+        .from("ai_providers")
+        .update(legacyPayload)
+        .eq("id", existingId)
+        .select("*")
+        .single());
+    }
+
     if (error) throw new Error(error.message);
     const provider = mapRow(data as ProviderRow);
 
@@ -168,6 +199,20 @@ export async function upsertAIProvider(
     .insert(payload)
     .select("*")
     .single();
+
+  if (error?.message.includes("auto_rotate_models") || error?.message.includes("model_pool")) {
+    const legacyPayload = { ...payload };
+    delete legacyPayload.model_pool;
+    delete legacyPayload.auto_rotate_models;
+    const retry = await supabase.from("ai_providers").insert(legacyPayload).select("*").single();
+    if (retry.error) throw new Error(retry.error.message);
+    const provider = mapRow(retry.data as ProviderRow);
+    if (input.defaultProvider) {
+      const { updateCompanyAISettings } = await import("./ai-settings");
+      await updateCompanyAISettings({ defaultProviderId: provider.id });
+    }
+    return provider;
+  }
 
   if (error) throw new Error(error.message);
   const provider = mapRow(data as ProviderRow);
@@ -233,6 +278,11 @@ export function validateProviderInput(body: unknown): AIProviderInput | null {
     apiKey: typeof data.apiKey === "string" ? data.apiKey : undefined,
     endpoint: typeof data.endpoint === "string" ? data.endpoint : undefined,
     model: typeof data.model === "string" ? data.model : undefined,
+    modelPool: Array.isArray(data.modelPool)
+      ? data.modelPool.map((m) => String(m).trim()).filter(Boolean)
+      : undefined,
+    autoRotateModels:
+      typeof data.autoRotateModels === "boolean" ? data.autoRotateModels : undefined,
     enabled: typeof data.enabled === "boolean" ? data.enabled : undefined,
     defaultProvider: typeof data.defaultProvider === "boolean" ? data.defaultProvider : undefined,
   };

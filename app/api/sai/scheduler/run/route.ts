@@ -19,12 +19,19 @@ export async function POST(request: Request) {
 
   try {
     const result = await runAutomationEngine();
+    const { tickAutonomousSessions } = await import("@/lib/sai/session-execution-driver");
+    const autonomous = await tickAutonomousSessions().catch(() => ({
+      queueProcessed: 0,
+      sessionsResumed: [] as string[],
+    }));
     return NextResponse.json({
       ok: true,
       ...result,
+      autonomous,
       total:
         result.dutySessions.length +
         result.automationSessions.length +
+        result.agentAutomationSessions.length +
         result.scheduledSessions.length +
         result.recurringSessions.length +
         result.eventSessions.length,

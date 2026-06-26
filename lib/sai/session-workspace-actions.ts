@@ -157,9 +157,13 @@ export async function runSessionControlAction(
   let result: unknown;
 
   switch (action) {
-    case "reconcile_state":
-      result = await reconcileSessionState(sessionId);
-      break;
+      case "reconcile_state":
+        result = await reconcileSessionState(sessionId);
+        if ((result as { resumeExecution?: boolean }).resumeExecution) {
+          const { driveSessionExecution } = await import("./session-execution-driver");
+          await driveSessionExecution(sessionId);
+        }
+        break;
     case "resume":
       result = await recoverSession(sessionId);
       break;

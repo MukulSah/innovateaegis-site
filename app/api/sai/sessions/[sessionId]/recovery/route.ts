@@ -47,10 +47,10 @@ export async function POST(request: Request, { params }: Params) {
     switch (action) {
       case "reconcile_state": {
         const { reconcileSessionState } = await import("@/lib/sai/session-state-engine");
-        const { triggerStepExecution } = await import("@/lib/sai/step-execution");
+        const { driveSessionExecution } = await import("@/lib/sai/session-execution-driver");
         result = await reconcileSessionState(sessionId);
         if ((result as { repaired?: boolean }).repaired) {
-          await triggerStepExecution(sessionId).catch(() => {});
+          await driveSessionExecution(sessionId);
         }
         break;
       }

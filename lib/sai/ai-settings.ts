@@ -7,6 +7,7 @@ type SettingsRow = {
   execution_mode?: AIExecutionMode;
   default_provider_id: string | null;
   fallback_provider_id?: string | null;
+  auto_model_rotation?: boolean | null;
   updated_at: string;
 };
 
@@ -17,6 +18,7 @@ function mapRow(row: SettingsRow): CompanyAISettings {
     executionMode: row.execution_mode ?? "free",
     defaultProviderId: row.default_provider_id,
     fallbackProviderId: row.fallback_provider_id ?? null,
+    autoModelRotation: row.auto_model_rotation ?? true,
     updatedAt: row.updated_at,
   };
 }
@@ -81,6 +83,7 @@ export async function updateCompanyAISettings(updates: {
   executionMode?: AIExecutionMode;
   defaultProviderId?: string | null;
   fallbackProviderId?: string | null;
+  autoModelRotation?: boolean;
 }): Promise<CompanyAISettings> {
   const supabase = createSupabaseAdmin();
   const current = await getCompanyAISettings();
@@ -98,6 +101,10 @@ export async function updateCompanyAISettings(updates: {
         updates.fallbackProviderId !== undefined
           ? updates.fallbackProviderId
           : current.fallbackProviderId ?? null,
+      auto_model_rotation:
+        updates.autoModelRotation !== undefined
+          ? updates.autoModelRotation
+          : current.autoModelRotation ?? true,
     })
     .eq("id", current.id)
     .select("*")

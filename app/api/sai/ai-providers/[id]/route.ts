@@ -13,6 +13,7 @@ type Ctx = { params: Promise<{ id: string }> };
 
 function revalidate() {
   revalidatePath("/sai/settings/ai");
+  revalidatePath("/sai/settings");
   revalidatePath("/sai");
 }
 

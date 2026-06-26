@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { SessionCenterView } from "@/components/sai/session-center-view";
 import { getAgents } from "@/lib/sai/agents";
 import { getSession } from "@/lib/sai/api-auth";
@@ -48,6 +49,9 @@ type Props = {
 
 export default async function SessionCenterPage({ searchParams }: Props) {
   const { section: rawSection } = await searchParams;
+  if (rawSection === "automation") {
+    redirect("/sai/automations");
+  }
   const section =
     rawSection && VALID_SECTIONS.has(rawSection as SessionCenterSection)
       ? (rawSection as SessionCenterSection)

@@ -28,6 +28,8 @@ export async function POST(request: Request) {
     body.triggerMetadata && typeof body.triggerMetadata === "object"
       ? (body.triggerMetadata as Record<string, unknown>)
       : undefined;
+  const aiModelSelection =
+    typeof body.aiModelSelection === "string" ? body.aiModelSelection.trim() : "auto";
 
   if (!projectId || !objective) {
     return NextResponse.json({ error: "projectId and objective are required" }, { status: 400 });
@@ -59,6 +61,7 @@ export async function POST(request: Request) {
           ? { ...triggerMetadata, armed: true, armedAt: new Date().toISOString() }
           : triggerMetadata,
       skipOrchestration: creationMode === "scheduled" || creationMode === "recurring" || creationMode === "triggered",
+      aiModelSelection,
     });
 
     revalidatePath("/sai/sessions");

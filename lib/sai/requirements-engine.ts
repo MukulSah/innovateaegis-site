@@ -1,5 +1,5 @@
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
-import { getWorkflowApprovals } from "./governance";
+import { getWorkflowApprovals, getProjectGovernance } from "./governance";
 import { addProjectMemory } from "./project-memory";
 import { addTimelineEvent } from "./project-timeline";
 import { getSessionArtifacts } from "./session-artifacts";
@@ -128,12 +128,28 @@ export async function canStartArchitecture(
   const approvals = await getWorkflowApprovals({ workflowId: sessionId, status: "pending" });
   const pendingReq = approvals.find((a) => a.approvalType === "requirements");
   if (pendingReq) {
-    return {
-      allowed: false,
-      reason: "Founder approval required for requirements before architecture",
-      requirementsArtifactId: requirementsArtifact.id,
-      approvalStatus: "pending",
-    };
+    const { shouldCooAutoApprove, processCooPendingApprovals } = await import("./coo-approval-engine");
+    if (await shouldCooAutoApprove(projectId, "requirements")) {
+      await processCooPendingApprovals(sessionId);
+      const stillPending = (await getWorkflowApprovals({ workflowId: sessionId, status: "pending" })).find(
+        (a) => a.approvalType === "requirements",
+      );
+      if (stillPending) {
+        return {
+          allowed: false,
+          reason: "Requirements approval pending — COO could not auto-approve",
+          requirementsArtifactId: requirementsArtifact.id,
+          approvalStatus: "pending",
+        };
+      }
+    } else {
+      return {
+        allowed: false,
+        reason: "Founder approval required for requirements before architecture",
+        requirementsArtifactId: requirementsArtifact.id,
+        approvalStatus: "pending",
+      };
+    }
   }
 
   const { getWorkflowApprovals: getAllApprovals } = await import("./governance");
@@ -141,19 +157,17 @@ export async function canStartArchitecture(
     workflowId: sessionId,
     status: "approved",
   });
-  const reqApproved = approved.some((a) => a.approvalType === "requirements");
+  const autoApproved = await getAllApprovals({
+    workflowId: sessionId,
+    status: "auto_approved",
+  });
+  const reqApproved =
+    approved.some((a) => a.approvalType === "requirements") ||
+    autoApproved.some((a) => a.approvalType === "requirements");
 
-  const supabase = createSupabaseAdmin();
-  const { data: project } = await supabase
-    .from("projects")
-    .select("governance_profile, workflow_mode")
-    .eq("id", projectId)
-    .maybeSingle();
+  const { isProjectHandsOff } = await import("./coo-approval-engine");
 
-  const founderApprovalRequired =
-    (project?.governance_profile as string | undefined) !== "autonomous";
-
-  if (founderApprovalRequired && !reqApproved) {
+  if (!(await isProjectHandsOff(projectId)) && !reqApproved) {
     return {
       allowed: false,
       reason: "Requirements founder approval not recorded",

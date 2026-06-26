@@ -63,6 +63,7 @@ export function FounderSessionTimelinePanel({
             <span>{step.label}</span>
             <span className="text-[10px] capitalize opacity-80">
               {step.status.replace("_", " ")}
+              {step.durationLabel ? ` · ${step.durationLabel}` : ""}
               {step.artifactName ? ` · ${step.artifactName}` : ""}
             </span>
           </li>

@@ -26,6 +26,8 @@ export type SpawnSessionInput = {
   recurrenceRule?: string | null;
   triggerMetadata?: Record<string, unknown>;
   skipOrchestration?: boolean;
+  /** "auto" or a specific model id from the company pool */
+  aiModelSelection?: string;
 };
 
 export type SpawnSessionResult = {
@@ -75,6 +77,11 @@ export async function spawnSession(input: SpawnSessionInput): Promise<SpawnSessi
   const startStepIndex = getTemplateStartStepIndex(template.stages);
   const { workflowMode } = await getProjectGovernance(projectId);
 
+  const { getLaunchAiOptions, buildSessionAiBrief } = await import("./launch-ai-options");
+  const launchAi = await getLaunchAiOptions();
+  const aiSelection = input.aiModelSelection?.trim() || "auto";
+  const sessionAiBrief = buildSessionAiBrief(launchAi, aiSelection);
+
   const isFutureScheduled =
     Boolean(input.scheduledAt) && new Date(input.scheduledAt!) > new Date();
   const isDeferredStart =
@@ -102,6 +109,7 @@ export async function spawnSession(input: SpawnSessionInput): Promise<SpawnSessi
         sessionTemplate: template.template.slug,
         sessionType: template.template.sessionType,
         creationMode: input.creationMode,
+        ...sessionAiBrief,
       },
       scheduled_at: input.scheduledAt ?? null,
       recurrence_rule: input.recurrenceRule ?? null,
@@ -135,6 +143,12 @@ export async function spawnSession(input: SpawnSessionInput): Promise<SpawnSessi
 
     if (!input.skipOrchestration && (await shouldAutoOrchestrate())) {
       await startOrchestration(run.id, projectId, input.objective, projectName, workflowMode);
+      try {
+        const { runCooAutonomousTick } = await import("./coo-approval-engine");
+        await runCooAutonomousTick();
+      } catch {
+        // best-effort
+      }
     }
   }
 

@@ -84,6 +84,43 @@ export async function validateSessionCompletion(
     };
   }
 
+  const supabase = createSupabaseAdmin();
+  const { data: runMeta } = await supabase
+    .from("workflow_runs")
+    .select("trigger_metadata, strategic_brief, creation_mode")
+    .eq("id", sessionId)
+    .maybeSingle();
+
+  const triggerMeta = (runMeta?.trigger_metadata as Record<string, unknown>) ?? {};
+  const brief = (runMeta?.strategic_brief as Record<string, unknown>) ?? {};
+  const isAgentAutomation =
+    runMeta?.creation_mode === "automation" &&
+    (triggerMeta.automationKind || brief.sessionTemplate);
+
+  if (isAgentAutomation) {
+    const artifacts = await getSessionArtifacts(sessionId);
+    const hasOutput = artifacts.length > 0;
+    return {
+      passed: hasOutput,
+      checks: [
+        {
+          id: "automation_output",
+          label: "Automation deliverable produced",
+          passed: hasOutput,
+          detail: hasOutput
+            ? `${artifacts.length} artifact(s) from automation run.`
+            : "No automation artifact produced.",
+          required: true,
+        },
+      ],
+      deliveryOutcome: hasOutput ? "Automation completed" : "Automation incomplete",
+      sessionType: "automation",
+      summary: hasOutput
+        ? "Minimal automation session completed successfully."
+        : "Automation session missing required output.",
+    };
+  }
+
   const sessionType = inferSessionType(
     session.objective,
     (session as { sessionType?: SessionType }).sessionType,
@@ -168,12 +205,34 @@ export async function applySessionCompletionValidation(
   const supabase = createSupabaseAdmin();
   const now = new Date().toISOString();
 
+  const { data: wf } = await supabase
+    .from("workflow_runs")
+    .select("project_id")
+    .eq("id", sessionId)
+    .maybeSingle();
+
+  let effectiveValidation = validation;
+  if (!validation.passed && wf?.project_id) {
+    const { getProjectGovernance } = await import("./governance");
+    const { isHandsOffGovernance, isProjectHandsOff, findCooActor } = await import("./coo-approval-engine");
+    const { governanceProfile, workflowMode } = await getProjectGovernance(wf.project_id as string);
+    if ((await isProjectHandsOff(wf.project_id as string)) || isHandsOffGovernance(governanceProfile, workflowMode)) {
+      const coo = await findCooActor();
+      effectiveValidation = {
+        ...validation,
+        passed: true,
+        deliveryOutcome: `COO accepted (${coo?.name ?? "COO"}): ${validation.deliveryOutcome}`,
+        summary: `Hands-off closure — COO approved session completion with documented caveats. ${validation.summary}`,
+      };
+    }
+  }
+
   const { error: extendedError } = await supabase
     .from("workflow_runs")
     .update({
-      completion_validation: validation,
-      delivery_outcome: validation.deliveryOutcome,
-      session_type: validation.sessionType,
+      completion_validation: effectiveValidation,
+      delivery_outcome: effectiveValidation.deliveryOutcome,
+      session_type: effectiveValidation.sessionType,
     })
     .eq("id", sessionId);
 
@@ -181,7 +240,7 @@ export async function applySessionCompletionValidation(
     throw new Error(extendedError.message);
   }
 
-  if (!validation.passed) {
+  if (!effectiveValidation.passed) {
     let reviewStatus: SessionStatus = "needs_founder_review";
     let { error: statusError } = await supabase
       .from("workflow_runs")
@@ -208,8 +267,8 @@ export async function applySessionCompletionValidation(
       throw new Error(statusError.message);
     }
 
-    return { closed: false, sessionStatus: reviewStatus, validation };
+    return { closed: false, sessionStatus: reviewStatus, validation: effectiveValidation };
   }
 
-  return { closed: true, sessionStatus: "completed", validation };
+  return { closed: true, sessionStatus: "completed", validation: effectiveValidation };
 }

@@ -58,13 +58,10 @@ function mapDuty(row: DutyRow): SessionDuty {
   };
 }
 
+import { computeNextCronRun } from "./cron-scheduler";
+
 export function computeNextDutyRun(cadence: string, from = new Date()): string {
-  const ms = cadence.includes("* * *")
-    ? 24 * 60 * 60 * 1000
-    : cadence.includes("* * 1") || cadence.includes("* * 5") || cadence.includes("* * 3")
-      ? 7 * 24 * 60 * 60 * 1000
-      : 24 * 60 * 60 * 1000;
-  return new Date(from.getTime() + ms).toISOString();
+  return computeNextCronRun(cadence, from);
 }
 
 export async function getSessionDuties(): Promise<SessionDuty[]> {

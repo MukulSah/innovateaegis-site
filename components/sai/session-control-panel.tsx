@@ -174,7 +174,10 @@ export function SessionControlPanel({ sessionId, truth }: Props) {
 
         {!isTerminal && (
           <div className="mt-4 flex flex-wrap gap-2">
-            {(recovery?.canResume || hasToolError || recovery?.isStalled) && (
+            {(recovery?.canResume ||
+              hasToolError ||
+              recovery?.isStalled ||
+              truth.sessionStatus === "waiting_for_ai_capacity") && (
               <button
                 type="button"
                 disabled={!!loading}

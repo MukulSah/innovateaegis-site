@@ -35,8 +35,11 @@ export async function PATCH(request: Request) {
       modelMode,
       executionMode,
       defaultProviderId: typeof body.defaultProviderId === "string" ? body.defaultProviderId : undefined,
+      autoModelRotation:
+        typeof body.autoModelRotation === "boolean" ? body.autoModelRotation : undefined,
     });
     revalidatePath("/sai/settings/ai");
+    revalidatePath("/sai/settings");
     return NextResponse.json({ settings });
   } catch (error) {
     return NextResponse.json(

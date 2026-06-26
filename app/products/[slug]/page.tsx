@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { ProductDetail } from "@/components/product-detail";
 import { SiteFooter } from "@/components/site-footer";
 import { findProductBySlug, products } from "@/lib/products";
+import { ManavyaLandingPage } from "@/components/manavya-landing";
 
 type ProductPageProps = {
   params: Promise<{ slug: string }>;
@@ -69,6 +70,34 @@ export async function generateMetadata({ params }: ProductPageProps): Promise<Me
     };
   }
 
+  if (slug === "manavya") {
+    return {
+      title: "Manavya M2 | Flagship AI Cognitive Platform | InnovateAegis",
+      description:
+        "Manavya AI is a unified cognitive platform powered by the M2 intelligence engine. Evolving from a powerful router to a native intelligence layer. Try free, unlimited Live Beta.",
+      keywords: [
+        "Manavya",
+        "Manavya AI",
+        "Manavya M2",
+        "AI cognitive model",
+        "expert coding AI",
+        "AI playground",
+        "InnovateAegis",
+        "AI router",
+      ],
+      alternates: {
+        canonical: "/products/manavya",
+      },
+      openGraph: {
+        title: "Manavya M2 | Flagship AI Cognitive Platform | InnovateAegis",
+        description:
+          "Launch Manavya M2, the central intelligence engine for routing, planning, and verification. Try free, unlimited Live Beta.",
+        url: "https://innovativeaegis.com/products/manavya",
+        type: "website",
+      },
+    };
+  }
+
   if (!product) {
     return {
       title: "Product | InnovateAegis",
@@ -95,6 +124,15 @@ export default async function ProductPage({ params }: Readonly<ProductPageProps>
 
   if (slug === "facenova") {
     return <FacenovaLandingPage />;
+  }
+
+  if (slug === "manavya") {
+    return (
+      <>
+        <ManavyaLandingPage product={product} />
+        <SiteFooter />
+      </>
+    );
   }
 
   return (

@@ -131,6 +131,8 @@ export async function triggerAutomationRule(
   }
 }
 
+import { isCronDue } from "./cron-scheduler";
+
 /** Evaluate schedule-based automation rules (cron stored in trigger_config). */
 export async function runScheduledAutomations(): Promise<string[]> {
   const rules = await getActiveAutomationRules();
@@ -141,12 +143,7 @@ export async function runScheduledAutomations(): Promise<string[]> {
     const cron = String(rule.triggerConfig.cron ?? "");
     if (!cron) continue;
 
-    const lastTriggered = rule.lastTriggeredAt ? new Date(rule.lastTriggeredAt) : null;
-    const minInterval = cron.includes("* * *") ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
-
-    if (lastTriggered && now.getTime() - lastTriggered.getTime() < minInterval - 60_000) {
-      continue;
-    }
+    if (!isCronDue(cron, rule.lastTriggeredAt, now)) continue;
 
     try {
       const { sessionId } = await triggerAutomationRule(rule.id);
@@ -209,14 +206,17 @@ export async function fireAgentAutomation(
 export async function runAutomationEngine(): Promise<{
   dutySessions: string[];
   automationSessions: string[];
+  agentAutomationSessions: string[];
   scheduledSessions: string[];
   recurringSessions: string[];
   triggeredSessions: string[];
   eventSessions: string[];
 }> {
   const { runAllDueDuties } = await import("./session-duties");
+  const { runDueAgentAutomations } = await import("./agent-automation-runner");
   const { processRecurringSessions } = await import("./session-spawn");
   const dutyResult = await runAllDueDuties();
+  const agentAutomationSessions = await runDueAgentAutomations().catch(() => [] as string[]);
   const automationSessions = await runScheduledAutomations();
   const scheduled = await activateScheduledSessions();
   const recurring = await processRecurringSessions();
@@ -225,6 +225,7 @@ export async function runAutomationEngine(): Promise<{
   return {
     dutySessions: dutyResult.sessions,
     automationSessions,
+    agentAutomationSessions,
     scheduledSessions: scheduled.map((s) => s.sessionId),
     recurringSessions: recurring.map((s) => s.sessionId),
     triggeredSessions: [],
