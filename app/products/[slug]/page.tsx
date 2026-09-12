@@ -5,6 +5,9 @@ import { ProductDetail } from "@/components/product-detail";
 import { SiteFooter } from "@/components/site-footer";
 import { findProductBySlug, products } from "@/lib/products";
 import { ManavyaLandingPage } from "@/components/manavya-landing";
+import { CareerMateLanding } from "@/components/careermate-landing";
+import { AuroraLanding } from "@/components/aurora-landing";
+import { StudioProductLanding } from "@/components/studio-product-landing";
 
 type ProductPageProps = {
   params: Promise<{ slug: string }>;
@@ -70,11 +73,62 @@ export async function generateMetadata({ params }: ProductPageProps): Promise<Me
     };
   }
 
+  if (slug === "careermate" || slug === "hygyr") {
+    return {
+      title: "CareerMate | Free ATS Resume Builder",
+      description:
+        "CareerMate is a free career operating system: ATS resume builder, Manavya review, interview coach, and application tracker. Formerly HYGYR. ₹0 forever.",
+      keywords: [
+        "CareerMate",
+        "HYGYR",
+        "ATS resume builder",
+        "free resume builder",
+        "interview coach",
+        "Innovative Aegis",
+      ],
+      alternates: {
+        canonical: "/products/careermate",
+      },
+      openGraph: {
+        title: "CareerMate | Everything you need to get hired",
+        description:
+          "Build. Improve. Practice. Apply. Get hired. Free forever. Formerly HYGYR.",
+        url: "https://innovativeaegis.com/products/careermate",
+        type: "website",
+      },
+    };
+  }
+
+  if (slug === "aurora-ai") {
+    return {
+      title: "Aurora AI | Robotaxi for Indian Streets",
+      description:
+        "Aurora AI is an autonomous taxi model being cooked for Indian streets — mixed traffic, monsoon nights, and cities across India.",
+      keywords: [
+        "Aurora AI",
+        "robotaxi India",
+        "autonomous taxi",
+        "self driving India",
+        "Innovative Aegis",
+      ],
+      alternates: {
+        canonical: "/products/aurora-ai",
+      },
+      openGraph: {
+        title: "Aurora AI | a robotaxi mind for Indian streets",
+        description:
+          "Announcement: Aurora AI is being cooked for driving specially on Indian streets.",
+        url: "https://innovativeaegis.com/products/aurora-ai",
+        type: "website",
+      },
+    };
+  }
+
   if (slug === "manavya") {
     return {
-      title: "Manavya M2 | Flagship AI Cognitive Platform | InnovateAegis",
+      title: "Manavya AI | Model Coming",
       description:
-        "Manavya AI is a unified cognitive platform powered by the M2 intelligence engine. Evolving from a powerful router to a native intelligence layer. Try free, unlimited Live Beta.",
+        "Manavya AI is coming — a native intelligence layer from Innovative Aegis, powered by the M2 engine. Intelligence born of creation.",
       keywords: [
         "Manavya",
         "Manavya AI",
@@ -89,9 +143,9 @@ export async function generateMetadata({ params }: ProductPageProps): Promise<Me
         canonical: "/products/manavya",
       },
       openGraph: {
-        title: "Manavya M2 | Flagship AI Cognitive Platform | InnovateAegis",
+        title: "Manavya AI | Model coming | Innovative Aegis",
         description:
-          "Launch Manavya M2, the central intelligence engine for routing, planning, and verification. Try free, unlimited Live Beta.",
+          "The Manavya AI model is coming. Intelligence born of creation. M2 playground is live.",
         url: "https://innovativeaegis.com/products/manavya",
         type: "website",
       },
@@ -135,6 +189,33 @@ export default async function ProductPage({ params }: Readonly<ProductPageProps>
     );
   }
 
+  if (slug === "careermate") {
+    return (
+      <>
+        <CareerMateLanding product={product} />
+        <SiteFooter />
+      </>
+    );
+  }
+
+  if (slug === "aurora-ai") {
+    return (
+      <>
+        <AuroraLanding product={product} />
+        <SiteFooter />
+      </>
+    );
+  }
+
+  if (slug === "sai" || slug === "unite") {
+    return (
+      <>
+        <StudioProductLanding product={product} />
+        <SiteFooter />
+      </>
+    );
+  }
+
   return (
     <>
       <ProductDetail product={product} />
@@ -161,7 +242,7 @@ function SentraLandingPage() {
 
   return (
     <>
-      <main className="pt-28 md:pt-32">
+      <main className="pt-36 md:pt-40">
         <section className="relative overflow-hidden px-6 pb-20 pt-14 md:px-10 md:pb-24 md:pt-18">
           <div className="pointer-events-none absolute inset-0">
             <div className="orb left-[8%] top-[12%] h-64 w-64 bg-blue-500/20" />
@@ -404,7 +485,7 @@ function FacenovaLandingPage() {
 
   return (
     <>
-      <main className="pt-28 md:pt-32">
+      <main className="pt-36 md:pt-40">
         <section className="relative overflow-hidden px-6 pb-20 pt-14 md:px-10 md:pb-24 md:pt-18">
           <div className="pointer-events-none absolute inset-0">
             <div className="orb left-[8%] top-[12%] h-64 w-64 bg-cyan-500/20" />

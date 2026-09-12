@@ -127,7 +127,7 @@ export function ManavyaLandingPage({ product }: ManavyaLandingPageProps) {
     <div
       ref={containerRef}
       onMouseMove={handleMouseMove}
-      className="relative min-h-screen bg-[#050510] text-white/90 selection:bg-[#ff6b57]/30 selection:text-white"
+      className="relative min-h-screen bg-[#050510] pt-24 text-white/90 selection:bg-[#ff6b57]/30 selection:text-white"
     >
       {/* Ambient Gradient Beam Following Cursor */}
       <div
@@ -182,9 +182,13 @@ export function ManavyaLandingPage({ product }: ManavyaLandingPageProps) {
           </motion.div>
         </div>
 
+        <div className="mb-8 inline-flex items-center gap-3 rounded-full border border-[#f5c77e]/30 bg-[#f5c77e]/10 px-4 py-2 text-[11px] uppercase tracking-[0.2em] text-[#f5c77e]">
+          Announcement · Manavya AI model coming
+        </div>
+
         {/* Vision Header */}
         <p className="text-xs font-semibold tracking-[0.25em] uppercase text-[#ff8a7a] mb-4">
-          InnovateAegis Flagship AI Platform
+          Innovative Aegis Flagship AI
         </p>
 
         <h1 className="text-5xl font-extrabold tracking-tight sm:text-7xl md:text-8xl leading-[1.05] text-white">
@@ -227,11 +231,11 @@ export function ManavyaLandingPage({ product }: ManavyaLandingPageProps) {
           
           <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative z-10">
             <div>
-              <p className="text-[10px] font-bold tracking-widest uppercase text-emerald-400">
-                Now Available
+              <p className="text-[10px] font-bold tracking-widest uppercase text-[#f5c77e]">
+                Model coming · M2 playground live
               </p>
               <h2 className="text-2xl md:text-3xl font-extrabold text-white mt-1">
-                Manavya M2 Beta
+                Manavya AI
               </h2>
               <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-2 text-xs md:text-sm text-white/70">
                 <div className="flex items-center gap-2">

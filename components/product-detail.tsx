@@ -23,7 +23,7 @@ type ProductDetailProps = {
 export function ProductDetail({ product }: ProductDetailProps) {
   if (product.slug === "sentra") return <SentraExperience product={product} />;
   if (product.slug === "facenova") return <FacenovaExperience product={product} />;
-  if (product.slug === "hygyr") return <HygyrExperience product={product} />;
+  if (product.slug === "smart-parking-finder") return <SmartParkingExperience product={product} />;
   return <SmartParkingExperience product={product} />;
 }
 
@@ -98,7 +98,7 @@ function SentraExperience({ product }: ProductDetailProps) {
 
   return (
     <div ref={rootRef}>
-      <main className="relative overflow-hidden px-6 pb-16 pt-32 md:px-10 md:pt-40">
+      <main className="relative overflow-hidden px-6 pb-16 pt-36 md:px-10 md:pt-44">
         {/* Hero — System Boot */}
         <section className="mx-auto w-full max-w-6xl">
           <div className="enterprise-glass relative overflow-hidden rounded-3xl border border-blue-400/15 p-8 md:p-12">
@@ -385,7 +385,7 @@ function FacenovaExperience({ product }: ProductDetailProps) {
 
   return (
     <div ref={rootRef}>
-      <main className="relative overflow-hidden px-6 pb-16 pt-32 md:px-10 md:pt-40">
+      <main className="relative overflow-hidden px-6 pb-16 pt-36 md:px-10 md:pt-44">
         {/* Hero — Camera Scan Reveal */}
         <section className="mx-auto w-full max-w-6xl">
           <div className="enterprise-glass relative overflow-hidden rounded-3xl border border-cyan-300/15 p-8 md:p-12">
@@ -633,7 +633,7 @@ function HygyrExperience({ product }: ProductDetailProps) {
 
   return (
     <div ref={rootRef}>
-      <main className="relative overflow-hidden px-6 pb-16 pt-32 md:px-10 md:pt-40">
+      <main className="relative overflow-hidden px-6 pb-16 pt-36 md:px-10 md:pt-44">
         {/* Hero — Resume Builds Itself */}
         <section className="mx-auto w-full max-w-6xl">
           <div className="enterprise-glass relative rounded-3xl border border-indigo-200/15 p-8 md:p-12">
@@ -868,7 +868,7 @@ function SmartParkingExperience({ product }: ProductDetailProps) {
 
   return (
     <div ref={rootRef}>
-      <main className="relative overflow-hidden px-6 pb-16 pt-32 md:px-10 md:pt-40">
+      <main className="relative overflow-hidden px-6 pb-16 pt-36 md:px-10 md:pt-44">
         {/* Hero — Map Zoom-In */}
         <section className="mx-auto w-full max-w-6xl">
           <div className="enterprise-glass relative overflow-hidden rounded-3xl border border-sky-300/15 p-8 md:p-12">

@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Manrope } from "next/font/google";
+import { Cormorant_Garamond, Manrope } from "next/font/google";
 import { Navbar } from "@/components/navbar";
 import { CursorGlow } from "@/components/cursor-effects";
 import { DevToolsBlocker } from "@/components/dev-tools-blocker";
@@ -10,31 +10,37 @@ const manrope = Manrope({
   subsets: ["latin"],
 });
 
+const cormorant = Cormorant_Garamond({
+  variable: "--font-cormorant",
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+});
+
 export const metadata: Metadata = {
   title: {
-    default: "InnovateAegis",
-    template: "%s | InnovateAegis",
+    default: "Innovative Aegis",
+    template: "%s | Innovative Aegis",
   },
   description:
-    "InnovateAegis is a product-focused AI software company building scalable systems for endpoint intelligence, face recognition attendance, and user productivity.",
+    "Innovative Aegis builds production-grade AI products: CareerMate, Manavya AI, Aurora AI robotaxi, Sentra, FaceNova, and SAI.",
   metadataBase: new URL("https://innovativeaegis.com"),
   alternates: {
     canonical: "/",
   },
   openGraph: {
     type: "website",
-    siteName: "InnovateAegis",
-    title: "InnovateAegis — Product-Grade AI Software Systems",
+    siteName: "Innovative Aegis",
+    title: "Innovative Aegis — a house of intelligence",
     description:
-      "InnovateAegis builds production-grade software products including endpoint management, face recognition attendance, and resume builder platforms.",
+      "CareerMate is live. Manavya AI is coming. Aurora AI is being cooked for Indian streets.",
     url: "https://innovativeaegis.com",
-    locale: "en_US",
+    locale: "en_IN",
   },
   twitter: {
-    card: "summary",
-    title: "InnovateAegis — Product-Grade AI Software Systems",
+    card: "summary_large_image",
+    title: "Innovative Aegis — a house of intelligence",
     description:
-      "InnovateAegis builds production-grade software products including endpoint management, face recognition attendance, and resume builder platforms.",
+      "CareerMate is live. Manavya AI is coming. Aurora AI is being cooked for Indian streets.",
   },
   robots: {
     index: true,
@@ -51,6 +57,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 5,
   userScalable: true,
+  themeColor: "#08070b",
 };
 
 export default function RootLayout({
@@ -59,8 +66,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${manrope.variable} h-full antialiased`}>
-      <body suppressHydrationWarning className="min-h-full bg-[#050510] text-white/90">
+    <html lang="en" className={`${manrope.variable} ${cormorant.variable} h-full antialiased`}>
+      <body suppressHydrationWarning className="min-h-full bg-[#08070b] text-[#f6f1e8]/90">
         <CursorGlow />
         <DevToolsBlocker />
         <Navbar />
